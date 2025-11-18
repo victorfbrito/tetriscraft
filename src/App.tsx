@@ -9,7 +9,8 @@ import AxesHelper from './components/AxesHelper'
 import OptimizedBlocks from './components/OptimizedBlocks'
 import CameraControls from './components/CameraControls'
 import Tree from './components/Tree'
-import PerformanceMonitor from './components/PerformanceMonitor'
+import PerformanceStatsCollector from './components/PerformanceStatsCollector'
+import PerformanceStatsDisplay from './components/PerformanceStatsDisplay'
 import Decorations from './components/Decorations'
 import { useGameState } from './hooks/useGameState'
 import { useTreePlacements } from './hooks/useTreePlacements'
@@ -96,6 +97,7 @@ export default function App() {
 
   return (
     <>
+      <PerformanceStatsDisplay />
       <TetrominoPreview
         queue={queue}
         selectedIndex={selectedIndex}
@@ -108,7 +110,7 @@ export default function App() {
         onToggleAxes={() => setShowAxes(!showAxes)}
       />
       <Canvas flat dpr={[1, 2]} shadows camera={{ fov: 75, position: [6, 6, 6] }}>
-        <PerformanceMonitor enabled={true} />
+        <PerformanceStatsCollector enabled={true} />
         {/* @ts-ignore - R3F color accepts hex strings */}
         <color attach="background" args={[SKY_COLOR]} />
         <ambientLight intensity={0.5} />
