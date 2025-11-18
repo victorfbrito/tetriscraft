@@ -54,8 +54,20 @@ export function getGrassBlockPositions(
 }
 
 /**
+ * Shuffle array in place using Fisher-Yates algorithm
+ */
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return shuffled
+}
+
+/**
  * Calculate tree positions for a single grass block
- * Returns 0, 1, or 2 tree positions (if 2, they're diagonally opposite)
+ * Returns 0, 1, 2, or 3 tree positions (ensuring no duplicate positions)
  */
 function getTreePositionsForBlock(
   blockPos: BlockPosition,
@@ -68,20 +80,29 @@ function getTreePositionsForBlock(
   if (treeCount === 1) {
     // Randomly select one of the 4 positions
     const offset = TREE_OFFSETS[Math.floor(Math.random() * TREE_OFFSETS.length)]
-    // Block center is at (blockPos.x, blockPos.y, blockPos.z)
-    // Block face extends from (blockPos.x - 0.5, blockPos.y, blockPos.z - 0.5) to (blockPos.x + 0.5, blockPos.y, blockPos.z + 0.5)
-    // Tree position at offset (0.20, 0.20) from bottom-left corner:
-    // x = (blockPos.x - 0.5) + 0.20 = blockPos.x - 0.3
-    // z = (blockPos.z - 0.5) + 0.20 = blockPos.z - 0.3
     positions.push({
-      x: blockPos.x - 0.5 + offset.x, // offset.x is 0.20 or 0.80
+      x: blockPos.x - 0.5 + offset.x,
       y: blockPos.y + 0.5, // On top of block (block is 1 unit tall)
-      z: blockPos.z - 0.5 + offset.z, // offset.z is 0.20 or 0.80
+      z: blockPos.z - 0.5 + offset.z,
     })
   } else if (treeCount === 2) {
-    // Select one diagonal pair
+    // Select one diagonal pair (ensures they're opposite corners)
     const pair = DIAGONAL_PAIRS[Math.floor(Math.random() * DIAGONAL_PAIRS.length)]
     pair.forEach((index) => {
+      const offset = TREE_OFFSETS[index]
+      positions.push({
+        x: blockPos.x - 0.5 + offset.x,
+        y: blockPos.y + 0.5,
+        z: blockPos.z - 0.5 + offset.z,
+      })
+    })
+  } else if (treeCount === 3) {
+    // Select 3 unique positions from the 4 available
+    // Shuffle the indices and take the first 3
+    const shuffledIndices = shuffleArray([0, 1, 2, 3])
+    const selectedIndices = shuffledIndices.slice(0, 3)
+    
+    selectedIndices.forEach((index) => {
       const offset = TREE_OFFSETS[index]
       positions.push({
         x: blockPos.x - 0.5 + offset.x,
@@ -108,6 +129,7 @@ export function generateTreePlacements(
   spawnDensity: number = TREE_SPAWN_DENSITY
 ): TreePlacement[] {
   const placements: TreePlacement[] = []
+  const usedPositions = new Set<string>() // Track used positions to prevent duplicates
   let treeIdIndex = 0
   
   grassBlocks.forEach((block) => {
@@ -116,15 +138,17 @@ export function generateTreePlacements(
       return // Skip this block
     }
     
-    // Natural variation: 40% chance of 0 trees, 40% chance of 1 tree, 20% chance of 2 trees
+    // Natural variation: 30% chance of 0 trees, 35% chance of 1 tree, 25% chance of 2 trees, 10% chance of 3 trees
     const rand = Math.random()
     let treeCount = 0
-    if (rand < 0.4) {
+    if (rand < 0.3) {
       treeCount = 0
-    } else if (rand < 0.8) {
+    } else if (rand < 0.65) {
       treeCount = 1
-    } else {
+    } else if (rand < 0.9) {
       treeCount = 2
+    } else {
+      treeCount = 3
     }
     
     // Create cluster effect: if nearby blocks have trees, increase probability
@@ -134,6 +158,15 @@ export function generateTreePlacements(
       const treePositions = getTreePositionsForBlock(block, treeCount)
       
       treePositions.forEach((pos) => {
+        // Create a unique key for this position (rounded to avoid floating point precision issues)
+        const positionKey = `${Math.round(pos.x * 100) / 100},${Math.round(pos.y * 100) / 100},${Math.round(pos.z * 100) / 100}`
+        
+        // Skip if this position is already occupied
+        if (usedPositions.has(positionKey)) {
+          return
+        }
+        
+        usedPositions.add(positionKey)
         const treeId = availableTreeIds[treeIdIndex % availableTreeIds.length]
         treeIdIndex++
         
