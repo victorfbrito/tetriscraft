@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, memo } from 'react'
 import { useSpring, a } from '@react-spring/three'
 import * as THREE from 'three'
 import { type FaceDirection } from '../utils/faceCulling'
@@ -8,13 +8,15 @@ interface DecorationInstanceProps {
   blockPosition: [number, number, number]
   face: FaceDirection
   rotation: [number, number, number]
+  delay: number
 }
 
-export default function DecorationInstance({
+function DecorationInstance({
   node,
   blockPosition,
   face,
   rotation,
+  delay,
 }: DecorationInstanceProps) {
   // Calculate position on the face
   // Face is centered on the block face, flush with the surface
@@ -40,33 +42,30 @@ export default function DecorationInstance({
     }
   }, [blockPosition, face])
   
-  // Random delay for show-up animation (50ms to 300ms, same as trees)
-  const showUpDelay = useMemo(() => 50 + Math.random() * 250, [])
-  
   // Scale animation: scale-up on mount (same as trees)
   const [springs] = useSpring(() => ({
     from: { scale: 0 },
     to: { scale: 1 },
     config: { mass: 1, tension: 170, friction: 18 },
-    delay: showUpDelay,
-  }), [showUpDelay])
+    delay: delay,
+  }), [delay])
   
-  // Clone the node and set up position/rotation
+  // Clone the node and reset position/rotation (position and rotation will be on the group, not the child)
   const clonedNode = useMemo(() => {
     if (!node) return null
     
     const cloned = node.clone()
     
-    // If it's a Mesh, we'll handle it separately
+    // Reset position and rotation to origin - position and rotation will be on the group
+    cloned.position.set(0, 0, 0)
+    cloned.rotation.set(0, 0, 0)
+    
+    // If it's a Mesh, we're done
     if (cloned.geometry && cloned.material) {
       return cloned
     }
     
-    // For Groups or other object types, set position and rotation
-    cloned.position.set(...position)
-    cloned.rotation.set(...rotation)
-    
-    // Enable shadows on all children
+    // For Groups or other object types, enable shadows on all children
     cloned.traverse((child: THREE.Object3D) => {
       if (child instanceof THREE.Mesh) {
         child.castShadow = true
@@ -75,20 +74,19 @@ export default function DecorationInstance({
     })
     
     return cloned
-  }, [node, position, rotation])
+  }, [node])
   
   if (!clonedNode) {
     return null
   }
   
   // Wrap in animated group for scale animation
+  // Position and rotation are set on the group so scaling happens around the correct pivot
   if (clonedNode.geometry && clonedNode.material) {
     // If node is a Mesh (has geometry and material), render as mesh
     return (
-      <a.group scale={springs.scale}>
+      <a.group position={position} rotation={rotation} scale={springs.scale}>
         <mesh
-          position={position}
-          rotation={rotation}
           geometry={clonedNode.geometry}
           material={clonedNode.material}
           castShadow
@@ -99,11 +97,27 @@ export default function DecorationInstance({
   }
   
   // For Groups or other object types, use primitive to render the cloned object
-  // Apply scale animation to the group
+  // Position and rotation are set on the group so scaling happens around the correct pivot
   return (
-    <a.group scale={springs.scale}>
+    <a.group position={position} rotation={rotation} scale={springs.scale}>
       <primitive object={clonedNode} />
     </a.group>
   )
 }
+
+// Memoize to prevent re-renders when props haven't changed
+export default memo(DecorationInstance, (prevProps, nextProps) => {
+  // Only re-render if props actually changed
+  return (
+    prevProps.node === nextProps.node &&
+    prevProps.blockPosition[0] === nextProps.blockPosition[0] &&
+    prevProps.blockPosition[1] === nextProps.blockPosition[1] &&
+    prevProps.blockPosition[2] === nextProps.blockPosition[2] &&
+    prevProps.face === nextProps.face &&
+    prevProps.rotation[0] === nextProps.rotation[0] &&
+    prevProps.rotation[1] === nextProps.rotation[1] &&
+    prevProps.rotation[2] === nextProps.rotation[2] &&
+    prevProps.delay === nextProps.delay
+  )
+})
 
