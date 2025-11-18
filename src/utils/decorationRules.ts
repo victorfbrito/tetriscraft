@@ -196,62 +196,44 @@ function getBaseDecorations(
   return decorations
 }
 
-// Door_Round rule: Render on horizontal faces (left/right) of brick blocks
-// if there's no brick block on the left/right side (from the face's perspective)
-// AND there's a block on the ground right in front of the door (safety check)
-// For a left/right face, "left" and "right" refer to positions along the Z-axis
-const doorRoundRule: DecorationRule = {
+// Door rule: Render on horizontal faces (left/right/front/back) of brick blocks
+// All door decorations (Door_Round, Door_Straight) share the same rules
+// 25% total chance (12.5% each door type, 75% none) if there's ground ahead
+const doorRule: DecorationRule = {
   material: 'brick',
   category: 'primary',
-  decorationNames: ['Door_Round'],
-  faces: ['left', 'right'],
+  decorationNames: ['Door_Round', 'Door_Straight'],
+  faces: ['left', 'right', 'front', 'back'],
   check: (blockPos, face, boardState) => {
     const [x, y, z] = blockPos
     
-    // For left/right faces, check positions along Z-axis (perpendicular to the face)
-    // "Left" from face perspective is +Z, "Right" is -Z
-    // Both positions should NOT have brick blocks for decoration to be placed
-    const leftSideKey = `${x},${y},${z + 1}` // +Z direction
-    const rightSideKey = `${x},${y},${z - 1}` // -Z direction
-    
-    const leftSideBlock = boardState.get(leftSideKey)
-    const rightSideBlock = boardState.get(rightSideKey)
-    
-    // Check if both left and right sides (along Z-axis) don't have brick blocks
-    const hasSpaceOnSides = leftSideBlock !== 'brick' && rightSideBlock !== 'brick'
-    if (!hasSpaceOnSides) {
-      return false
-    }
-    
     // Check if there's a block on the ground right in front of the door
-    // Left face faces -X direction, so check [x - 1, y - 1, z]
-    // Right face faces +X direction, so check [x + 1, y - 1, z]
     let groundInFrontKey: string
-    if (face === 'left') {
-      groundInFrontKey = `${x - 1},${y - 1},${z}` // One block left (in -X) and one block down
-    } else {
-      // face === 'right'
-      groundInFrontKey = `${x + 1},${y - 1},${z}` // One block right (in +X) and one block down
+    switch (face) {
+      case 'left':
+        // Left face faces -X direction, so check [x - 1, y - 1, z]
+        groundInFrontKey = `${x - 1},${y - 1},${z}`
+        break
+      case 'right':
+        // Right face faces +X direction, so check [x + 1, y - 1, z]
+        groundInFrontKey = `${x + 1},${y - 1},${z}`
+        break
+      case 'front':
+        // Front face faces +Z direction, so check [x, y - 1, z + 1]
+        groundInFrontKey = `${x},${y - 1},${z + 1}`
+        break
+      case 'back':
+        // Back face faces -Z direction, so check [x, y - 1, z - 1]
+        groundInFrontKey = `${x},${y - 1},${z - 1}`
+        break
+      default:
+        return false
     }
     
     const groundInFront = boardState.get(groundInFrontKey)
     
     // Place decoration only if there's a block on the ground in front (any material)
     return groundInFront !== undefined
-  },
-}
-
-// Door_Straight rule: Similar to Door_Round but with different conditions
-// TODO: Add specific rules for Door_Straight
-const doorStraightRule: DecorationRule = {
-  material: 'brick',
-  category: 'primary',
-  decorationNames: ['Door_Straight'],
-  faces: ['left', 'right'],
-  check: (blockPos, face, boardState) => {
-    // Placeholder: same logic as Door_Round for now
-    // TODO: Implement specific Door_Straight rules
-    return doorRoundRule.check(blockPos, face, boardState)
   },
 }
 
@@ -285,11 +267,137 @@ const brickPatternRule: DecorationRule = {
 
 // Export all decoration rules
 export const DECORATION_RULES: DecorationRule[] = [
-  doorRoundRule,
-  doorStraightRule,
+  doorRule,
   windowRule,
   brickPatternRule,
 ]
+
+// Get roof decoration type and rotation based on adjacent faces
+// Returns [decorationName, rotation] for the roof
+function getRoofDecoration(
+  blockPos: Position,
+  boardState: Map<string, MaterialType>
+): { decorationName: string; rotation: [number, number, number] } | null {
+  const [x, y, z] = blockPos
+  
+  // Check adjacent blocks at the same Y level (left, right, front, back)
+  const leftKey = `${x - 1},${y},${z}`
+  const rightKey = `${x + 1},${y},${z}`
+  const frontKey = `${x},${y},${z + 1}`
+  const backKey = `${x},${y},${z - 1}`
+  
+  const hasLeft = boardState.get(leftKey) === 'brick'
+  const hasRight = boardState.get(rightKey) === 'brick'
+  const hasFront = boardState.get(frontKey) === 'brick'
+  const hasBack = boardState.get(backKey) === 'brick'
+  
+  const adjacentCount = [hasLeft, hasRight, hasFront, hasBack].filter(Boolean).length
+  
+  // Base rotation for top face
+  const baseRotation: [number, number, number] = [-Math.PI / 2, 0, 0]
+  
+  switch (adjacentCount) {
+    case 0:
+      // No adjacent faces - Brick_Roof_5
+      return {
+        decorationName: 'Brick_Roof_5',
+        rotation: baseRotation,
+      }
+    
+    case 1:
+      // One adjacent face - Brick_Roof_4, rotate to point opposite
+      let rotation4: [number, number, number]
+      if (hasLeft) {
+        // Adjacent on left, point right (opposite)
+        rotation4 = [-Math.PI / 2, -Math.PI / 2, 0]
+      } else if (hasRight) {
+        // Adjacent on right, point left (opposite)
+        rotation4 = [-Math.PI / 2, Math.PI / 2, 0]
+      } else if (hasFront) {
+        // Adjacent on front, point back (opposite)
+        rotation4 = [-Math.PI / 2, Math.PI, 0]
+      } else {
+        // hasBack - Adjacent on back, point front (opposite)
+        rotation4 = [-Math.PI / 2, 0, 0]
+      }
+      return {
+        decorationName: 'Brick_Roof_4',
+        rotation: rotation4,
+      }
+    
+    case 2:
+      // Two adjacent faces
+      if ((hasLeft && hasRight) || (hasFront && hasBack)) {
+        // Opposite faces - Brick_Roof_2, face the empty side
+        let rotation2: [number, number, number]
+        if (hasLeft && hasRight) {
+          // Left and right occupied, face front or back (whichever is empty)
+          rotation2 = hasFront 
+            ? [-Math.PI / 2, Math.PI, 0] // Face back
+            : [-Math.PI / 2, 0, 0] // Face front
+        } else {
+          // Front and back occupied, face left or right (whichever is empty)
+          rotation2 = hasLeft
+            ? [-Math.PI / 2, -Math.PI / 2, 0] // Face right
+            : [-Math.PI / 2, Math.PI / 2, 0] // Face left
+        }
+        return {
+          decorationName: 'Brick_Roof_2',
+          rotation: rotation2,
+        }
+      } else {
+        // Corner (two adjacent sides) - Brick_Roof_3
+        // Simplified rotation for now - can improve later
+        // Determine which corner and rotate appropriately
+        let rotation3: [number, number, number]
+        if (hasLeft && hasFront) {
+          // Corner: left-front, point toward back-right
+          rotation3 = [-Math.PI / 2, Math.PI / 4, 0]
+        } else if (hasLeft && hasBack) {
+          // Corner: left-back, point toward front-right
+          rotation3 = [-Math.PI / 2, -Math.PI / 4, 0]
+        } else if (hasRight && hasFront) {
+          // Corner: right-front, point toward back-left
+          rotation3 = [-Math.PI / 2, 3 * Math.PI / 4, 0]
+        } else {
+          // hasRight && hasBack - Corner: right-back, point toward front-left
+          rotation3 = [-Math.PI / 2, -3 * Math.PI / 4, 0]
+        }
+        return {
+          decorationName: 'Brick_Roof_3',
+          rotation: rotation3,
+        }
+      }
+    
+    case 3:
+      // Three adjacent faces - Brick_Roof_1, face the empty side
+      let rotation1: [number, number, number]
+      if (!hasLeft) {
+        // Left is empty, face left
+        rotation1 = [-Math.PI / 2, Math.PI / 2, 0]
+      } else if (!hasRight) {
+        // Right is empty, face right
+        rotation1 = [-Math.PI / 2, -Math.PI / 2, 0]
+      } else if (!hasFront) {
+        // Front is empty, face front
+        rotation1 = [-Math.PI / 2, 0, 0]
+      } else {
+        // Back is empty, face back
+        rotation1 = [-Math.PI / 2, Math.PI, 0]
+      }
+      return {
+        decorationName: 'Brick_Roof_1',
+        rotation: rotation1,
+      }
+    
+    case 4:
+      // All four sides have blocks - no roof needed (shouldn't happen if top face is visible)
+      return null
+    
+    default:
+      return null
+  }
+}
 
 // Calculate rotation based on face direction
 function getFaceRotation(face: FaceDirection): [number, number, number] {
@@ -317,25 +425,62 @@ function getFaceRotation(face: FaceDirection): [number, number, number] {
   }
 }
 
-// Random selection: 50% chance for "none", remaining 50% split equally among matching decorations
+// Deterministic seeded random function based on position and face
+// This ensures the same block/face combination always produces the same "random" result
+function seededRandom(seed: string): number {
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) {
+    const char = seed.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash | 0 // Convert to 32-bit integer
+  }
+  // Convert to 0-1 range
+  return Math.abs(hash) / 2147483647
+}
+
+// Random selection: equal frequency for all decoration options including "none"
+// Special case: doors have 25% total chance (12.5% each door type, 75% none)
 // Returns the selected decoration name, or null if no decoration should be placed
-function selectRandomDecoration(matchingRules: DecorationRule[]): string | null {
+// Uses deterministic seeded random based on block position and face
+function selectRandomDecoration(
+  matchingRules: DecorationRule[],
+  blockPos: Position,
+  face: FaceDirection
+): string | null {
   if (matchingRules.length === 0) {
     return null
   }
   
-  // 50% chance to return nothing
-  if (Math.random() < 0.5) {
-    return null
+  // Check if this is a door rule (has Door_Round or Door_Straight)
+  const isDoorRule = matchingRules.some(rule => 
+    rule.decorationNames.includes('Door_Round') || 
+    rule.decorationNames.includes('Door_Straight')
+  )
+  
+  // Collect all possible decoration names from all matching rules
+  const allDecorationNames: string[] = []
+  for (const rule of matchingRules) {
+    allDecorationNames.push(...rule.decorationNames)
   }
   
-  // 50% chance to randomly select one matching rule
-  const randomRuleIndex = Math.floor(Math.random() * matchingRules.length)
-  const selectedRule = matchingRules[randomRuleIndex]
+  // Create options array with weighted probabilities
+  let options: Array<string | null>
+  if (isDoorRule) {
+    // Doors: 25% total (12.5% each door type), 75% none
+    // Add "none" 3 times to give it 3x weight (3/4 = 75%)
+    options = [...allDecorationNames, null, null, null]
+  } else {
+    // Other decorations: equal frequency for all options including "none"
+    options = [...allDecorationNames, null]
+  }
   
-  // Randomly select one decoration name from the rule's decorationNames array
-  const randomDecorationIndex = Math.floor(Math.random() * selectedRule.decorationNames.length)
-  return selectedRule.decorationNames[randomDecorationIndex]
+  // Create a seed from block position and face for deterministic randomness
+  const seed = `${blockPos.join(',')}-${face}`
+  const random = seededRandom(seed)
+  
+  // Select one option with weighted probability
+  const selectedIndex = Math.floor(random * options.length)
+  return options[selectedIndex]
 }
 
 // Get all decoration placements for a given board state
@@ -393,6 +538,24 @@ export function getDecorationPlacements(
               })
             }
           }
+          
+          // Add roof decoration on top face if there's no block above
+          // Check if there's no block directly above (which also means top face is visible)
+          const blockAboveKey = `${x},${y + 1},${z}`
+          const blockAbove = boardState.get(blockAboveKey)
+          // Only place roof if there's no block above at all (undefined)
+          if (blockAbove === undefined) {
+            const roofDecoration = getRoofDecoration(blockPos, boardState)
+            if (roofDecoration) {
+              placements.push({
+                position: blockPos,
+                face: 'top',
+                decorationName: roofDecoration.decorationName,
+                rotation: roofDecoration.rotation,
+                delay,
+              })
+            }
+          }
         }
       } else {
         // Primary and secondary decorations: apply rule checks, then random selection
@@ -408,7 +571,8 @@ export function getDecorationPlacements(
           
           if (matchingRules.length > 0) {
             // Random selection: 50% none, 50% one of the matching decorations
-            const selectedDecorationName = selectRandomDecoration(matchingRules)
+            // Uses deterministic seeded random based on block position and face
+            const selectedDecorationName = selectRandomDecoration(matchingRules, blockPos, face)
             
             if (selectedDecorationName) {
               placements.push({
