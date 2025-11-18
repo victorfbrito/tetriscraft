@@ -3,15 +3,19 @@ import { type FaceDirection, isFaceVisible } from './faceCulling'
 
 type Position = [number, number, number]
 
+export type DecorationCategory = 'base' | 'primary' | 'secondary'
+
 export interface DecorationPlacement {
   position: Position
   face: FaceDirection
   decorationName: string
   rotation: [number, number, number]
+  delay: number
 }
 
 export interface DecorationRule {
   material: MaterialType
+  category: DecorationCategory
   decorationName: string
   faces: FaceDirection[]
   check: (
@@ -21,12 +25,182 @@ export interface DecorationRule {
   ) => boolean
 }
 
+// Corner detection for base decorations using matrix approach
+// Matrix: [A, B, C] where B is current block, facing E
+//         [D, E, F]
+// Right corner: if (no cube in A OR cube in D) then right corner
+// Left corner: if (no cube in C OR cube in F) then left corner
+// Returns [hasLeftCorner, hasRightCorner] for a given face
+function detectCorners(
+  blockPos: Position,
+  face: FaceDirection,
+  boardState: Map<string, MaterialType>
+): [boolean, boolean] {
+  const [x, y, z] = blockPos
+  let aKey: string  // Left side of current block
+  let cKey: string  // Right side of current block
+  let dKey: string  // Diagonal left-front
+  let fKey: string  // Diagonal right-front
+  
+  switch (face) {
+    case 'front': // facing +Z
+      aKey = `${x - 1},${y},${z}`      // A: left side
+      cKey = `${x + 1},${y},${z}`     // C: right side
+      dKey = `${x - 1},${y},${z + 1}` // D: diagonal left-front
+      fKey = `${x + 1},${y},${z + 1}` // F: diagonal right-front
+      break
+    case 'back': // facing -Z
+      aKey = `${x + 1},${y},${z}`      // A: left side (from back perspective)
+      cKey = `${x - 1},${y},${z}`     // C: right side (from back perspective)
+      dKey = `${x + 1},${y},${z - 1}` // D: diagonal left-front
+      fKey = `${x - 1},${y},${z - 1}` // F: diagonal right-front
+      break
+    case 'left': // facing -X
+      aKey = `${x},${y},${z - 1}`      // A: left side (back from face perspective)
+      cKey = `${x},${y},${z + 1}`     // C: right side (front from face perspective)
+      dKey = `${x - 1},${y},${z - 1}` // D: diagonal left-front
+      fKey = `${x - 1},${y},${z + 1}` // F: diagonal right-front
+      break
+    case 'right': // facing +X
+      aKey = `${x},${y},${z + 1}`      // A: left side (front from face perspective)
+      cKey = `${x},${y},${z - 1}`     // C: right side (back from face perspective)
+      dKey = `${x + 1},${y},${z + 1}` // D: diagonal left-front
+      fKey = `${x + 1},${y},${z - 1}` // F: diagonal right-front
+      break
+    default:
+      // Top and bottom faces don't have corners in this context
+      return [false, false]
+  }
+  
+  // Only consider brick blocks (ignore grass base board and other materials)
+  const hasA = boardState.get(aKey) === 'brick'
+  const hasC = boardState.get(cKey) === 'brick'
+  const hasD = boardState.get(dKey) === 'brick'
+  const hasF = boardState.get(fKey) === 'brick'
+  
+  // Right corner: if (no cube in A OR cube in D) then right corner
+  const hasRightCorner = !hasA || hasD
+  
+  // Left corner: if (no cube in C OR cube in F) then left corner
+  const hasLeftCorner = !hasC || hasF
+  
+  return [hasLeftCorner, hasRightCorner]
+}
+
+// Get a unique key for a corner position to prevent duplicate decorations
+// A corner is identified by its world position (x, y, z) where x and z are at block edges
+function getCornerKey(
+  blockPos: Position,
+  face: FaceDirection,
+  isLeftCorner: boolean
+): string {
+  const [x, y, z] = blockPos
+  
+  // Calculate the actual corner position in world space
+  // Corners are at block edges (x ± 0.5, z ± 0.5)
+  let cornerX: number
+  let cornerZ: number
+  
+  if (isLeftCorner) {
+    // Left corner: on the left edge of the face
+    switch (face) {
+      case 'front':
+        cornerX = x - 0.5
+        cornerZ = z + 0.5
+        break
+      case 'back':
+        cornerX = x + 0.5
+        cornerZ = z - 0.5
+        break
+      case 'left':
+        cornerX = x - 0.5
+        cornerZ = z - 0.5
+        break
+      case 'right':
+        cornerX = x + 0.5
+        cornerZ = z + 0.5
+        break
+      default:
+        return ''
+    }
+  } else {
+    // Right corner: on the right edge of the face
+    switch (face) {
+      case 'front':
+        cornerX = x + 0.5
+        cornerZ = z + 0.5
+        break
+      case 'back':
+        cornerX = x - 0.5
+        cornerZ = z - 0.5
+        break
+      case 'left':
+        cornerX = x - 0.5
+        cornerZ = z + 0.5
+        break
+      case 'right':
+        cornerX = x + 0.5
+        cornerZ = z - 0.5
+        break
+      default:
+        return ''
+    }
+  }
+  
+  // Return a unique key for this corner position
+  return `corner_${cornerX}_${y}_${cornerZ}`
+}
+
+// Generate base decorations for a face
+// Returns array of decoration names that should be placed on this face
+function getBaseDecorations(
+  blockPos: Position,
+  face: FaceDirection,
+  boardState: Map<string, MaterialType>,
+  decoratedCorners: Set<string>
+): string[] {
+  const decorations: string[] = []
+  const [x, y, z] = blockPos
+  
+  // 1. Always add Brick_Wall_Top
+  decorations.push('Brick_Wall_Top')
+  
+  // 2. Add Brick_Wall_Bottom if there's NO brick block directly below
+  const blockBelowKey = `${x},${y - 1},${z}`
+  const blockBelow = boardState.get(blockBelowKey)
+  if (blockBelow !== 'brick') {
+    decorations.push('Brick_Wall_Bottom')
+  }
+  
+  // 3. Detect corners and add corner decorations (with deduplication)
+  const [hasLeftCorner, hasRightCorner] = detectCorners(blockPos, face, boardState)
+  
+  if (hasLeftCorner) {
+    const leftCornerKey = getCornerKey(blockPos, face, true)
+    if (!decoratedCorners.has(leftCornerKey)) {
+      decorations.push('Brick_Wall_Corner_2')
+      decoratedCorners.add(leftCornerKey)
+    }
+  }
+  
+  if (hasRightCorner) {
+    const rightCornerKey = getCornerKey(blockPos, face, false)
+    if (!decoratedCorners.has(rightCornerKey)) {
+      decorations.push('Brick_Wall_Corner_1')
+      decoratedCorners.add(rightCornerKey)
+    }
+  }
+  
+  return decorations
+}
+
 // Door_Round rule: Render on horizontal faces (left/right) of brick blocks
 // if there's no brick block on the left/right side (from the face's perspective)
 // AND there's a block on the ground right in front of the door (safety check)
 // For a left/right face, "left" and "right" refer to positions along the Z-axis
 const doorRoundRule: DecorationRule = {
   material: 'brick',
+  category: 'primary',
   decorationName: 'Door_Round',
   faces: ['left', 'right'],
   check: (blockPos, face, boardState) => {
@@ -65,14 +239,160 @@ const doorRoundRule: DecorationRule = {
   },
 }
 
+// Door_Straight rule: Similar to Door_Round but with different conditions
+// TODO: Add specific rules for Door_Straight
+const doorStraightRule: DecorationRule = {
+  material: 'brick',
+  category: 'primary',
+  decorationName: 'Door_Straight',
+  faces: ['left', 'right'],
+  check: (blockPos, face, boardState) => {
+    // Placeholder: same logic as Door_Round for now
+    // TODO: Implement specific Door_Straight rules
+    return doorRoundRule.check(blockPos, face, boardState)
+  },
+}
+
+// Window_1 rule: Render on horizontal faces of brick blocks
+// TODO: Add specific rules for Window_1
+const window1Rule: DecorationRule = {
+  material: 'brick',
+  category: 'primary',
+  decorationName: 'Window_1',
+  faces: ['left', 'right', 'front', 'back'],
+  check: (_blockPos, _face, _boardState) => {
+    // Placeholder: always return false for now
+    // TODO: Implement specific Window_1 rules
+    return false
+  },
+}
+
+// Window_2 rule: Render on horizontal faces of brick blocks
+// TODO: Add specific rules for Window_2
+const window2Rule: DecorationRule = {
+  material: 'brick',
+  category: 'primary',
+  decorationName: 'Window_2',
+  faces: ['left', 'right', 'front', 'back'],
+  check: (_blockPos, _face, _boardState) => {
+    // Placeholder: always return false for now
+    // TODO: Implement specific Window_2 rules
+    return false
+  },
+}
+
+// Brick_Pattern_1 rule: Secondary decoration
+// TODO: Add specific rules for Brick_Pattern_1
+const brickPattern1Rule: DecorationRule = {
+  material: 'brick',
+  category: 'secondary',
+  decorationName: 'Brick_Pattern_1',
+  faces: ['left', 'right', 'front', 'back'],
+  check: (_blockPos, _face, _boardState) => {
+    // Placeholder: always return false for now
+    // TODO: Implement specific Brick_Pattern_1 rules
+    return false
+  },
+}
+
+// Brick_Pattern_2 rule: Secondary decoration
+// TODO: Add specific rules for Brick_Pattern_2
+const brickPattern2Rule: DecorationRule = {
+  material: 'brick',
+  category: 'secondary',
+  decorationName: 'Brick_Pattern_2',
+  faces: ['left', 'right', 'front', 'back'],
+  check: (_blockPos, _face, _boardState) => {
+    // Placeholder: always return false for now
+    // TODO: Implement specific Brick_Pattern_2 rules
+    return false
+  },
+}
+
+// Brick_Pattern_3 rule: Secondary decoration
+// TODO: Add specific rules for Brick_Pattern_3
+const brickPattern3Rule: DecorationRule = {
+  material: 'brick',
+  category: 'secondary',
+  decorationName: 'Brick_Pattern_3',
+  faces: ['left', 'right', 'front', 'back'],
+  check: (_blockPos, _face, _boardState) => {
+    // Placeholder: always return false for now
+    // TODO: Implement specific Brick_Pattern_3 rules
+    return false
+  },
+}
+
 // Export all decoration rules
-export const DECORATION_RULES: DecorationRule[] = [doorRoundRule]
+export const DECORATION_RULES: DecorationRule[] = [
+  doorRoundRule,
+  doorStraightRule,
+  window1Rule,
+  window2Rule,
+  brickPattern1Rule,
+  brickPattern2Rule,
+  brickPattern3Rule,
+]
+
+// Calculate rotation based on face direction
+function getFaceRotation(face: FaceDirection): [number, number, number] {
+  switch (face) {
+    case 'left':
+      // Left face: rotate to face outward (toward negative X)
+      return [0, Math.PI / 2, 0]
+    case 'right':
+      // Right face: rotate to face outward (toward positive X)
+      return [0, -Math.PI / 2, 0]
+    case 'front':
+      // Front face: rotate to face outward (toward positive Z)
+      return [0, 0, 0]
+    case 'back':
+      // Back face: rotate to face outward (toward negative Z)
+      return [0, Math.PI, 0]
+    case 'top':
+      // Top face: rotate to face upward
+      return [-Math.PI / 2, 0, 0]
+    case 'bottom':
+      // Bottom face: rotate to face downward
+      return [Math.PI / 2, 0, 0]
+    default:
+      return [0, 0, 0]
+  }
+}
+
+// Random selection: 50% chance for "none", remaining 50% split equally among matching decorations
+function selectRandomDecoration(matchingDecorations: DecorationRule[]): DecorationRule | null {
+  if (matchingDecorations.length === 0) {
+    return null
+  }
+  
+  // 50% chance to return nothing
+  if (Math.random() < 0.5) {
+    return null
+  }
+  
+  // 50% chance to randomly select one matching decoration
+  const randomIndex = Math.floor(Math.random() * matchingDecorations.length)
+  return matchingDecorations[randomIndex]
+}
 
 // Get all decoration placements for a given board state
 export function getDecorationPlacements(
   boardState: Map<string, MaterialType>
 ): DecorationPlacement[] {
   const placements: DecorationPlacement[] = []
+  const horizontalFaces: FaceDirection[] = ['left', 'right', 'front', 'back']
+  
+  // Track decorated corners to prevent duplicates when corners are shared between faces
+  const decoratedCorners = new Set<string>()
+  
+  // Process decorations by category: base, primary, secondary
+  const categories: DecorationCategory[] = ['base', 'primary', 'secondary']
+  const categoryDelays: Record<DecorationCategory, number> = {
+    base: 50,
+    primary: 300,
+    secondary: 550,
+  }
   
   // Iterate through all blocks in board state
   for (const [key, material] of boardState.entries()) {
@@ -84,49 +404,60 @@ export function getDecorationPlacements(
       continue
     }
     
-    // Check all rules that match this material
-    const applicableRules = DECORATION_RULES.filter(rule => rule.material === material)
-    
-    for (const rule of applicableRules) {
-      // Check each face specified in the rule
-      for (const face of rule.faces) {
-        // Only place decorations on visible faces (not covered by adjacent blocks)
-        if (!isFaceVisible(blockPos, face, boardState)) {
-          continue
-        }
-        
-        // Check if this face should have a decoration
-        if (rule.check(blockPos, face, boardState)) {
-          // Calculate rotation based on face direction
-          // Assumes decoration models are correctly oriented in Blender (vertical for doors on vertical faces)
-          let rotation: [number, number, number] = [0, 0, 0]
-          
-          if (face === 'left') {
-            // Left face: rotate to face outward (toward negative X)
-            rotation = [0, Math.PI / 2, 0]
-          } else if (face === 'right') {
-            // Right face: rotate to face outward (toward positive X)
-            rotation = [0, -Math.PI / 2, 0]
-          } else if (face === 'front') {
-            // Front face: rotate to face outward (toward positive Z)
-            rotation = [0, 0, 0]
-          } else if (face === 'back') {
-            // Back face: rotate to face outward (toward negative Z)
-            rotation = [0, Math.PI, 0]
-          } else if (face === 'top') {
-            // Top face: rotate to face upward
-            rotation = [-Math.PI / 2, 0, 0]
-          } else if (face === 'bottom') {
-            // Bottom face: rotate to face downward
-            rotation = [Math.PI / 2, 0, 0]
+    // Process each category
+    for (const category of categories) {
+      const delay = categoryDelays[category]
+      
+      // Get all visible horizontal faces for this block
+      const visibleHorizontalFaces = horizontalFaces.filter(face => 
+        isFaceVisible(blockPos, face, boardState)
+      )
+      
+      if (category === 'base') {
+        // Base decorations: render multiple decorations on visible horizontal faces of brick blocks
+        if (material === 'brick') {
+          for (const face of visibleHorizontalFaces) {
+            // Get all base decorations for this face (Top, Bottom, Corner_1, Corner_2)
+            const decorationNames = getBaseDecorations(blockPos, face, boardState, decoratedCorners)
+            
+            // Create a placement for each decoration
+            for (const decorationName of decorationNames) {
+              placements.push({
+                position: blockPos,
+                face,
+                decorationName,
+                rotation: getFaceRotation(face),
+                delay,
+              })
+            }
           }
+        }
+      } else {
+        // Primary and secondary decorations: apply rule checks, then random selection
+        const applicableRules = DECORATION_RULES.filter(
+          rule => rule.material === material && rule.category === category
+        )
+        
+        // Group matching decorations by face
+        for (const face of visibleHorizontalFaces) {
+          const matchingRules = applicableRules.filter(rule => 
+            rule.faces.includes(face) && rule.check(blockPos, face, boardState)
+          )
           
-          placements.push({
-            position: blockPos,
-            face,
-            decorationName: rule.decorationName,
-            rotation,
-          })
+          if (matchingRules.length > 0) {
+            // Random selection: 50% none, 50% one of the matching decorations
+            const selectedRule = selectRandomDecoration(matchingRules)
+            
+            if (selectedRule) {
+              placements.push({
+                position: blockPos,
+                face,
+                decorationName: selectedRule.decorationName,
+                rotation: getFaceRotation(face),
+                delay,
+              })
+            }
+          }
         }
       }
     }
