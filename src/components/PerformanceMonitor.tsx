@@ -83,7 +83,7 @@ export default function PerformanceMonitor({ enabled = true }: PerformanceMonito
   if (!enabled || !visible) return null
 
   return (
-    <Html position={[0, 0, 0]} style={{ pointerEvents: 'none' }}>
+    <Html position={[5, 5, 5]} style={{ pointerEvents: 'none' }}>
       <div
         style={{
           position: 'fixed',

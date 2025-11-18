@@ -10,9 +10,11 @@ import OptimizedBlocks from './components/OptimizedBlocks'
 import CameraControls from './components/CameraControls'
 import Tree from './components/Tree'
 import PerformanceMonitor from './components/PerformanceMonitor'
+import Decorations from './components/Decorations'
 import { useGameState } from './hooks/useGameState'
 import { useTreePlacements } from './hooks/useTreePlacements'
 import './App.css'
+import { SKY_COLOR } from './utils/materials'
 
 export default function App() {
   const [showWireframe, setShowWireframe] = useState(false)
@@ -31,7 +33,11 @@ export default function App() {
     completeDrop,
     calculateLandingY,
     getTetrominoBlockPositions,
+    currentLandingIsValid,
   } = useGameState()
+
+  // State for shake animation on invalid drop
+  const [shadowShake, setShadowShake] = useState(false)
 
   // Procedural tree generation
   const { treePlacements, addTreesForTetromino, removeTreesUnderTetromino, removeTree } = useTreePlacements(
@@ -78,6 +84,16 @@ export default function App() {
       )
     : 0
 
+  // Handle drop with validation and shake
+  const handleDropTetromino = () => {
+    const success = dropTetromino()
+    if (!success) {
+      // Invalid drop - trigger shake animation
+      setShadowShake(true)
+      setTimeout(() => setShadowShake(false), 1000) // Reset after animation
+    }
+  }
+
   return (
     <>
       <TetrominoPreview
@@ -93,7 +109,8 @@ export default function App() {
       />
       <Canvas flat dpr={[1, 2]} shadows camera={{ fov: 75, position: [6, 6, 6] }}>
         <PerformanceMonitor enabled={true} />
-        <color attach="background" args={['#1a1a2e']} />
+        {/* @ts-ignore - R3F color accepts hex strings */}
+        <color attach="background" args={[SKY_COLOR]} />
         <ambientLight intensity={0.5} />
         <directionalLight 
           position={[2, 5, 4]} 
@@ -118,7 +135,7 @@ export default function App() {
           activeTetromino={activeTetromino}
           moveTetromino={moveTetromino}
           rotateTetromino={rotateTetromino}
-          dropTetromino={dropTetromino}
+          dropTetromino={handleDropTetromino}
         />
         <group position-y={-0.75} dispose={null}>
           <Suspense fallback={null}>
@@ -140,6 +157,9 @@ export default function App() {
             boardState={boardState} 
             wireframe={showWireframe} 
           />
+          <Suspense fallback={null}>
+            <Decorations boardState={boardState} />
+          </Suspense>
           {activeTetromino && (
             <>
               <Tetromino
@@ -154,6 +174,8 @@ export default function App() {
                 position={activeTetromino.position}
                 rotation={activeTetromino.rotation}
                 landingY={landingY}
+                isValid={currentLandingIsValid}
+                shake={shadowShake}
               />
             </>
           )}
@@ -177,6 +199,7 @@ export default function App() {
                 landingY={droppingTetromino.endPosition[1]}
                 isDropping={true}
                 startY={droppingTetromino.startPosition[1]}
+                isValid={true}
               />
             </>
           )}

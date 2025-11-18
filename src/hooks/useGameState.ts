@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { type TetrominoType, getRotatedPositions } from '../components/Tetromino'
 import { type MaterialType } from '../utils/materials'
 
@@ -84,8 +84,8 @@ export function useGameState() {
   // Board size constant (should match Board component default size)
   const BOARD_SIZE = 16
   
-  // Initialize board with base board grass blocks and a GRASS_STAIR tetromino already placed
-  const initializeBoardWithStair = (): [Map<string, MaterialType>, number] => {
+  // Initialize board with base board grass blocks only
+  const initializeBoard = (): [Map<string, MaterialType>, number] => {
     const initialBoardState = new Map<string, MaterialType>()
     
     // Calculate board bounds for integer grid (center at [1, 1, 1])
@@ -100,38 +100,19 @@ export function useGameState() {
       }
     }
     
-    // Position the GRASS_STAIR at the center of the board, one block above the surface
-    const stairPosition: Position = [1, 1, 1] // Board center, Y=1 (on top of base board)
-    const stairRotation: Rotation = 0
-    
-    // Get block positions for GRASS_STAIR
-    const blockPositions = getRotatedPositions('GRASS_STAIR', stairRotation)
-    const material = getMaterialFromType('GRASS_STAIR')
-    
-    // Add GRASS_STAIR blocks to board state
-    blockPositions.forEach(([rx, ry, rz]) => {
-      const x = stairPosition[0] + rx
-      const y = stairPosition[1] + ry
-      const z = stairPosition[2] + rz
-      const key = `${x},${y},${z}`
-      initialBoardState.set(key, material)
-    })
-    
-    // Calculate highest Y
-    const maxY = Math.max(...blockPositions.map(([, ry]) => stairPosition[1] + ry))
-    
-    return [initialBoardState, maxY]
+    // Highest Y is 0 (base board level)
+    return [initialBoardState, 0]
   }
 
   // Board state: Map of occupied positions to materials "x,y,z" -> MaterialType
   const [boardState, setBoardState] = useState<Map<string, MaterialType>>(() => {
-    const [initialState] = initializeBoardWithStair()
+    const [initialState] = initializeBoard()
     return initialState
   })
 
   // Highest block Y position on board
   const [highestY, setHighestY] = useState<number>(() => {
-    const [, initialHighestY] = initializeBoardWithStair()
+    const [, initialHighestY] = initializeBoard()
     return initialHighestY
   })
 
@@ -142,25 +123,152 @@ export function useGameState() {
   const BOARD_MIN = 1 - Math.floor(BOARD_SIZE / 2) // -7 for size 16
   const BOARD_MAX = 1 + Math.floor((BOARD_SIZE - 1) / 2) // 8 for size 16
 
-  // Check if position is valid (within bounds and not colliding)
+  // Get the material of the block directly below a position
+  const getBlockBelow = useCallback((
+    x: number,
+    y: number,
+    z: number,
+    boardState: Map<string, MaterialType>
+  ): MaterialType | null => {
+    const key = `${x},${y - 1},${z}`
+    return boardState.get(key) || null
+  }, [])
+
+  // Check if a block has an adjacent block of the same material that's supported
+  // For floating rule: adjacent block must be at same Y level, same material, and have support below
+  const hasAdjacentSameMaterialSupport = useCallback((
+    blockPos: Position,
+    material: MaterialType,
+    boardState: Map<string, MaterialType>
+  ): boolean => {
+    const [x, y, z] = blockPos
+    // Check 4 adjacent positions at the same Y level (north, south, east, west)
+    const adjacentPositions: Position[] = [
+      [x + 1, y, z], // East
+      [x - 1, y, z], // West
+      [x, y, z + 1], // North
+      [x, y, z - 1], // South
+    ]
+
+    for (const [ax, ay, az] of adjacentPositions) {
+      const adjacentKey = `${ax},${ay},${az}`
+      const adjacentMaterial = boardState.get(adjacentKey)
+      
+      // If adjacent block exists and is same material at same Y level
+      if (adjacentMaterial === material) {
+        // Check if that adjacent block has support below it (has a block directly below)
+        const belowKey = `${ax},${ay - 1},${az}`
+        if (boardState.has(belowKey)) {
+          return true // Found adjacent same-material block with support
+        }
+      }
+    }
+    
+    return false
+  }, [])
+
+  // Check if a block position is valid according to material-based rules
+  // Also checks if adjacent blocks in the same tetromino provide support for floating
+  const isValidBlockPlacement = useCallback((
+    blockPos: Position,
+    material: MaterialType,
+    boardState: Map<string, MaterialType>,
+    tetrominoBlockPositions?: Position[] // All blocks in the tetromino being placed
+  ): boolean => {
+    const [x, y, z] = blockPos
+    
+    // Check board bounds
+    if (x < BOARD_MIN || x > BOARD_MAX || z < BOARD_MIN || z > BOARD_MAX) return false
+    // Check if position is occupied
+    const key = `${x},${y},${z}`
+    if (boardState.has(key)) return false
+    // Check collision with board surface
+    if (y <= 0) return false
+
+    const blockBelow = getBlockBelow(x, y, z, boardState)
+
+    // Rule 4: Grass blocks ALWAYS need grass below
+    if (material === 'grass') {
+      return blockBelow === 'grass'
+    }
+
+    // Rule 1: Wood blocks can be above any block
+    if (material === 'wood') {
+      if (blockBelow !== null) {
+        return true // Has support below
+      }
+      // Rule 3: Wood can float if adjacent same-material block (in tetromino or board) is supported
+      // First check if adjacent block in same tetromino has support
+      if (tetrominoBlockPositions) {
+        const adjacentPositions: Position[] = [
+          [x + 1, y, z], [x - 1, y, z], [x, y, z + 1], [x, y, z - 1],
+        ]
+        for (const [ax, ay, az] of adjacentPositions) {
+          // Check if this adjacent position is part of the tetromino
+          const isInTetromino = tetrominoBlockPositions.some(
+            ([tx, ty, tz]) => tx === ax && ty === ay && tz === az
+          )
+          if (isInTetromino) {
+            // Check if this adjacent block has support below
+            const adjBlockBelow = getBlockBelow(ax, ay, az, boardState)
+            if (adjBlockBelow !== null) {
+              return true // Adjacent block in tetromino has support
+            }
+          }
+        }
+      }
+      // Also check boardState for adjacent same-material blocks with support
+      return hasAdjacentSameMaterialSupport(blockPos, material, boardState)
+    }
+
+    // Rule 2: Brick blocks can be above brick or grass
+    if (material === 'brick') {
+      if (blockBelow === 'brick' || blockBelow === 'grass') {
+        return true // Has valid support below
+      }
+      if (blockBelow === null) {
+        // Rule 3: Brick can float if adjacent same-material block (in tetromino or board) is supported
+        // First check if adjacent block in same tetromino has support
+        if (tetrominoBlockPositions) {
+          const adjacentPositions: Position[] = [
+            [x + 1, y, z], [x - 1, y, z], [x, y, z + 1], [x, y, z - 1],
+          ]
+          for (const [ax, ay, az] of adjacentPositions) {
+            // Check if this adjacent position is part of the tetromino
+            const isInTetromino = tetrominoBlockPositions.some(
+              ([tx, ty, tz]) => tx === ax && ty === ay && tz === az
+            )
+            if (isInTetromino) {
+              // Check if this adjacent block has support below
+              const adjBlockBelow = getBlockBelow(ax, ay, az, boardState)
+              if (adjBlockBelow !== null) {
+                return true // Adjacent block in tetromino has support
+              }
+            }
+          }
+        }
+        // Also check boardState for adjacent same-material blocks with support
+        return hasAdjacentSameMaterialSupport(blockPos, material, boardState)
+      }
+      return false // Brick cannot be above wood
+    }
+
+    return false
+  }, [getBlockBelow, hasAdjacentSameMaterialSupport])
+
+  // Check if position is valid (within bounds, not colliding, and follows material rules)
   const isValidPosition = useCallback((
     type: TetrominoType,
     position: Position,
-    rotation: Rotation
+    rotation: Rotation,
+    material: MaterialType
   ): boolean => {
     const blockPositions = getTetrominoBlockPositions(type, position, rotation)
     
-    return blockPositions.every(([x, y, z]) => {
-      // Check board bounds (integer grid: X/Z from BOARD_MIN to BOARD_MAX)
-      if (x < BOARD_MIN || x > BOARD_MAX || z < BOARD_MIN || z > BOARD_MAX) return false
-      // Check if position is occupied (check boardState for placed blocks)
-      const key = `${x},${y},${z}`
-      if (boardState.has(key)) return false
-      // Check collision with board surface (Y=0 is the board level, blocks should be above it)
-      if (y <= 0) return false
-      return true
+    return blockPositions.every((blockPos) => {
+      return isValidBlockPlacement(blockPos, material, boardState, blockPositions)
     })
-  }, [boardState, getTetrominoBlockPositions])
+  }, [boardState, getTetrominoBlockPositions, isValidBlockPlacement])
 
   // Select tetromino from queue
   const selectTetromino = useCallback((index: number) => {
@@ -195,8 +303,16 @@ export function useGameState() {
       const newZ = prev.position[2] + deltaZ
       const newPosition: Position = [newX, prev.position[1], newZ]
       
-      // Check if new position is valid
-      if (!isValidPosition(prev.type, newPosition, prev.rotation)) {
+      // Check if new position is valid (bounds and collision only, material rules checked at landing)
+      const blockPositions = getTetrominoBlockPositions(prev.type, newPosition, prev.rotation)
+      const hasCollision = blockPositions.some(([x, y, z]) => {
+        if (x < BOARD_MIN || x > BOARD_MAX || z < BOARD_MIN || z > BOARD_MAX) return true
+        const key = `${x},${y},${z}`
+        if (boardState.has(key)) return true
+        if (y <= 0) return true
+        return false
+      })
+      if (hasCollision) {
         return prev // Don't move if invalid
       }
       
@@ -215,8 +331,16 @@ export function useGameState() {
       if (!prev) return null
       const newRotation = ((prev.rotation + 90) % 360) as Rotation
       
-      // Check if rotated position is valid
-      if (!isValidPosition(prev.type, prev.position, newRotation)) {
+      // Check if rotated position is valid (bounds and collision only, material rules checked at landing)
+      const blockPositions = getTetrominoBlockPositions(prev.type, prev.position, newRotation)
+      const hasCollision = blockPositions.some(([x, y, z]) => {
+        if (x < BOARD_MIN || x > BOARD_MAX || z < BOARD_MIN || z > BOARD_MAX) return true
+        const key = `${x},${y},${z}`
+        if (boardState.has(key)) return true
+        if (y <= 0) return true
+        return false
+      })
+      if (hasCollision) {
         return prev // Don't rotate if invalid
       }
       
@@ -281,9 +405,19 @@ export function useGameState() {
     onComplete()
   }, [droppingTetromino, boardState, highestY, getTetrominoBlockPositions])
 
+  // Check if landing position is valid according to material rules
+  const isValidLandingPosition = useCallback((
+    type: TetrominoType,
+    position: Position,
+    rotation: Rotation,
+    material: MaterialType
+  ): boolean => {
+    return isValidPosition(type, position, rotation, material)
+  }, [isValidPosition])
+
   // Drop tetromino to landing position (triggers animation)
   const dropTetromino = useCallback(() => {
-    if (!activeTetromino || selectedIndex === null) return
+    if (!activeTetromino || selectedIndex === null) return false
 
     const landingY = calculateLandingY(
       activeTetromino.type,
@@ -293,6 +427,18 @@ export function useGameState() {
 
     const startPosition: Position = activeTetromino.position
     const endPosition: Position = [activeTetromino.position[0], landingY, activeTetromino.position[2]]
+
+    // Check if landing position is valid according to material rules
+    const isValid = isValidLandingPosition(
+      activeTetromino.type,
+      endPosition,
+      activeTetromino.rotation,
+      activeTetromino.material
+    )
+
+    if (!isValid) {
+      return false // Invalid position, don't drop
+    }
 
     // Remove used tetromino from queue and add new one
     // Material is derived from tetromino type name
@@ -318,7 +464,32 @@ export function useGameState() {
       },
     })
     setActiveTetromino(null)
-  }, [activeTetromino, selectedIndex, queue, calculateLandingY])
+    return true // Successfully dropped
+  }, [activeTetromino, selectedIndex, queue, calculateLandingY, isValidLandingPosition])
+
+  // Calculate if current active tetromino's landing position is valid
+  const currentLandingIsValid = useMemo(() => {
+    if (!activeTetromino) return true
+    
+    const landingY = calculateLandingY(
+      activeTetromino.type,
+      activeTetromino.position,
+      activeTetromino.rotation
+    )
+    
+    const landingPosition: Position = [
+      activeTetromino.position[0],
+      landingY,
+      activeTetromino.position[2],
+    ]
+    
+    return isValidLandingPosition(
+      activeTetromino.type,
+      landingPosition,
+      activeTetromino.rotation,
+      activeTetromino.material
+    )
+  }, [activeTetromino, calculateLandingY, isValidLandingPosition])
 
   return {
     queue,
@@ -336,6 +507,8 @@ export function useGameState() {
     getTetrominoBlockPositions,
     calculateLandingY,
     isValidPosition,
+    isValidLandingPosition,
+    currentLandingIsValid,
   }
 }
 

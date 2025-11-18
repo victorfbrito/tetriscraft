@@ -1,4 +1,5 @@
-import { useSpring, a } from '@react-spring/three'
+import { useSpring, a, useSpringRef } from '@react-spring/three'
+import { useEffect } from 'react'
 import * as THREE from 'three'
 import { type TetrominoType, getRotatedPositions } from './Tetromino'
 
@@ -9,6 +10,8 @@ interface TetrominoShadowProps {
   landingY: number
   isDropping?: boolean
   startY?: number
+  isValid?: boolean
+  shake?: boolean
 }
 
 export default function TetrominoShadow({ 
@@ -18,6 +21,8 @@ export default function TetrominoShadow({
   landingY,
   isDropping = false,
   startY,
+  isValid = true,
+  shake = false,
 }: TetrominoShadowProps) {
   const blockPositions = getRotatedPositions(type, rotation)
   
@@ -29,9 +34,38 @@ export default function TetrominoShadow({
     from: { opacity: 0.2 },
     config: { mass: 1, tension: 100, friction: 20 },
   })
+
+  // Shake animation
+  const shakeApi = useSpringRef()
+  const shakeSpring = useSpring({
+    ref: shakeApi,
+    x: 0,
+    z: 0,
+    config: { mass: 1, tension: 300, friction: 100 },
+  })
+
+  // Trigger shake animation when shake prop becomes true
+  useEffect(() => {
+    if (shake) {
+      shakeApi.start({
+        from: { x: 0, z: 0 },
+        to: [
+          { x: -0.05, z: -0.05 },
+          { x: 0.05, z: 0.05 },
+          { x: -0.05, z: -0.05 },
+          { x: 0.05, z: 0.05 },
+          { x: 0, z: 0 },
+        ],
+        config: { duration: 100 },
+      })
+    }
+  }, [shake, shakeApi])
+  
+  // Determine shadow color based on validity
+  const shadowColor = isValid ? '#ffffff' : '#ff0000'
   
   return (
-    <group>
+    <a.group position-x={shakeSpring.x} position-z={shakeSpring.z}>
       {blockPositions.map((blockPos, index) => (
         <mesh
           key={index}
@@ -44,15 +78,15 @@ export default function TetrominoShadow({
           <boxGeometry args={[1, 1, 1]} />
           {/* @ts-ignore - react-spring animated material type issue */}
           <a.meshStandardMaterial
-            color="#ffffff"
+            color={shadowColor}
             opacity={shadowSpring.opacity}
             transparent
-            emissive={new THREE.Color('#ffffff')}
+            emissive={new THREE.Color(shadowColor)}
             emissiveIntensity={0.1}
           />
         </mesh>
       ))}
-    </group>
+    </a.group>
   )
 }
 
