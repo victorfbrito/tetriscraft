@@ -66,22 +66,6 @@ export function useGameState() {
     onComplete: () => void
   } | null>(null)
 
-  // Board state: Map of occupied positions to materials "x,y,z" -> MaterialType
-  const [boardState, setBoardState] = useState<Map<string, MaterialType>>(new Map())
-
-  // Highest block Y position on board
-  const [highestY, setHighestY] = useState<number>(0)
-
-  // Selected queue index
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-
-  // Board size constant (should match Board component default size)
-  const BOARD_SIZE = 16
-  // Calculate board bounds for integer grid (center at [1, 1, 1])
-  // For size 16: minCoord = 1 - floor(16/2) = -7, maxCoord = 1 + floor(15/2) = 8
-  const BOARD_MIN = 1 - Math.floor(BOARD_SIZE / 2) // -7 for size 16
-  const BOARD_MAX = 1 + Math.floor((BOARD_SIZE - 1) / 2) // 8 for size 16
-
   // Get block positions for a tetromino at given position and rotation
   const getTetrominoBlockPositions = useCallback((
     type: TetrominoType,
@@ -96,6 +80,67 @@ export function useGameState() {
       position[2] + rz,
     ] as Position)
   }, [])
+
+  // Board size constant (should match Board component default size)
+  const BOARD_SIZE = 16
+  
+  // Initialize board with base board grass blocks and a GRASS_STAIR tetromino already placed
+  const initializeBoardWithStair = (): [Map<string, MaterialType>, number] => {
+    const initialBoardState = new Map<string, MaterialType>()
+    
+    // Calculate board bounds for integer grid (center at [1, 1, 1])
+    const minCoord = 1 - Math.floor(BOARD_SIZE / 2)
+    const maxCoord = 1 + Math.floor((BOARD_SIZE - 1) / 2)
+    
+    // Add base board grass blocks at Y=0
+    for (let x = minCoord; x <= maxCoord; x++) {
+      for (let z = minCoord; z <= maxCoord; z++) {
+        const key = `${x},0,${z}`
+        initialBoardState.set(key, 'grass')
+      }
+    }
+    
+    // Position the GRASS_STAIR at the center of the board, one block above the surface
+    const stairPosition: Position = [1, 1, 1] // Board center, Y=1 (on top of base board)
+    const stairRotation: Rotation = 0
+    
+    // Get block positions for GRASS_STAIR
+    const blockPositions = getRotatedPositions('GRASS_STAIR', stairRotation)
+    const material = getMaterialFromType('GRASS_STAIR')
+    
+    // Add GRASS_STAIR blocks to board state
+    blockPositions.forEach(([rx, ry, rz]) => {
+      const x = stairPosition[0] + rx
+      const y = stairPosition[1] + ry
+      const z = stairPosition[2] + rz
+      const key = `${x},${y},${z}`
+      initialBoardState.set(key, material)
+    })
+    
+    // Calculate highest Y
+    const maxY = Math.max(...blockPositions.map(([, ry]) => stairPosition[1] + ry))
+    
+    return [initialBoardState, maxY]
+  }
+
+  // Board state: Map of occupied positions to materials "x,y,z" -> MaterialType
+  const [boardState, setBoardState] = useState<Map<string, MaterialType>>(() => {
+    const [initialState] = initializeBoardWithStair()
+    return initialState
+  })
+
+  // Highest block Y position on board
+  const [highestY, setHighestY] = useState<number>(() => {
+    const [, initialHighestY] = initializeBoardWithStair()
+    return initialHighestY
+  })
+
+  // Selected queue index
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  // Calculate board bounds for integer grid (center at [1, 1, 1])
+  // For size 16: minCoord = 1 - floor(16/2) = -7, maxCoord = 1 + floor(15/2) = 8
+  const BOARD_MIN = 1 - Math.floor(BOARD_SIZE / 2) // -7 for size 16
+  const BOARD_MAX = 1 + Math.floor((BOARD_SIZE - 1) / 2) // 8 for size 16
 
   // Check if position is valid (within bounds and not colliding)
   const isValidPosition = useCallback((

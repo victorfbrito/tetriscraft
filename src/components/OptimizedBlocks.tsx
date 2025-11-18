@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
-import { generateAllQuads, getFaceNormal } from '../utils/greedyMeshing'
+import { generateAllQuads } from '../utils/greedyMeshing'
 import { type MaterialType, getMaterialColor } from '../utils/materials'
 
 interface OptimizedBlocksProps {
@@ -36,7 +36,6 @@ export default function OptimizedBlocks({
     
     for (const [material, materialQuads] of quadsByMaterial.entries()) {
       const positions: number[] = []
-      const normals: number[] = []
       const indices: number[] = []
       
       let vertexIndex = 0
@@ -44,8 +43,6 @@ export default function OptimizedBlocks({
       for (const quad of materialQuads) {
         const { position, direction, width, height } = quad
         const [px, py, pz] = position
-        const normal = getFaceNormal(direction)
-        const [nx, ny, nz] = normal
         
         // Determine the four corners of the quad based on direction
         let corners: [number, number, number][]
@@ -115,7 +112,6 @@ export default function OptimizedBlocks({
         const baseIndex = vertexIndex
         for (const corner of corners) {
           positions.push(corner[0], corner[1], corner[2])
-          normals.push(nx, ny, nz)
           vertexIndex++
         }
         
@@ -179,9 +175,11 @@ export default function OptimizedBlocks({
       
       const geom = new THREE.BufferGeometry()
       geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-      geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
       geom.setIndex(indices)
       geom.computeBoundingSphere()
+      // Compute normals from geometry - this ensures proper lighting
+      // This creates flat shading where each face has its own normal
+      geom.computeVertexNormals()
       
       geometries.push({ material, geometry: geom })
     }
@@ -192,7 +190,7 @@ export default function OptimizedBlocks({
   return (
     <group>
       {materialGeometries.map(({ material, geometry }, index) => (
-        <mesh key={index} geometry={geometry} receiveShadow>
+        <mesh key={index} geometry={geometry} receiveShadow castShadow>
           <meshStandardMaterial
             color={getMaterialColor(material)}
             wireframe={wireframe}

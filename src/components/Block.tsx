@@ -18,10 +18,10 @@ export default function Block({
   const blockColor = material ? getMaterialColor(material) : (color || "#4a90e2")
   
   return (
-    <mesh position={position} receiveShadow>
+    <mesh position={position} receiveShadow castShadow>
       <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial 
-        color={blockColor} 
+      <meshStandardMaterial
+        color={blockColor}
         wireframe={wireframe}
         {...(wireframe ? { emissive: new THREE.Color(blockColor), emissiveIntensity: 0.3 } : {})}
       />

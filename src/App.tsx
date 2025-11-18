@@ -1,7 +1,6 @@
 import { useState, Suspense, useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import Board from './components/Board'
 import Tetromino from './components/Tetromino'
 import TetrominoShadow from './components/TetrominoShadow'
 import TetrominoPreview from './components/TetrominoPreview'
@@ -10,6 +9,7 @@ import AxesHelper from './components/AxesHelper'
 import OptimizedBlocks from './components/OptimizedBlocks'
 import CameraControls from './components/CameraControls'
 import Tree from './components/Tree'
+import PerformanceMonitor from './components/PerformanceMonitor'
 import { useGameState } from './hooks/useGameState'
 import { useTreePlacements } from './hooks/useTreePlacements'
 import './App.css'
@@ -92,6 +92,7 @@ export default function App() {
         onToggleAxes={() => setShowAxes(!showAxes)}
       />
       <Canvas flat dpr={[1, 2]} shadows camera={{ fov: 75, position: [6, 6, 6] }}>
+        <PerformanceMonitor enabled={true} />
         <color attach="background" args={['#1a1a2e']} />
         <ambientLight intensity={0.5} />
         <directionalLight 
@@ -135,7 +136,6 @@ export default function App() {
             ))}
           </Suspense>
           {showAxes && <AxesHelper />}
-          <Board size={boardSize} position={[0, 0, 0]} wireframe={showWireframe} />
           <OptimizedBlocks 
             boardState={boardState} 
             wireframe={showWireframe} 
