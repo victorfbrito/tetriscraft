@@ -16,7 +16,7 @@ export interface DecorationPlacement {
 export interface DecorationRule {
   material: MaterialType
   category: DecorationCategory
-  decorationName: string
+  decorationNames: string[] // Array of decoration names that share the same rule
   faces: FaceDirection[]
   check: (
     blockPos: Position,
@@ -78,11 +78,13 @@ function detectCorners(
   const hasD = boardState.get(dKey) === 'brick'
   const hasF = boardState.get(fKey) === 'brick'
   
-  // Right corner: if (no cube in A OR cube in D) then right corner
-  const hasRightCorner = !hasA || hasD
+  // Right corner: detected when there's a block on left (A) but not on right (C), creating internal angle
+  // OR when there's a diagonal block (D) that creates a corner
+  const hasRightCorner = (hasA && !hasC) || hasD
   
-  // Left corner: if (no cube in C OR cube in F) then left corner
-  const hasLeftCorner = !hasC || hasF
+  // Left corner: detected when there's a block on right (C) but not on left (A), creating internal angle
+  // OR when there's a diagonal block (F) that creates a corner
+  const hasLeftCorner = (hasC && !hasA) || hasF
   
   return [hasLeftCorner, hasRightCorner]
 }
@@ -201,7 +203,7 @@ function getBaseDecorations(
 const doorRoundRule: DecorationRule = {
   material: 'brick',
   category: 'primary',
-  decorationName: 'Door_Round',
+  decorationNames: ['Door_Round'],
   faces: ['left', 'right'],
   check: (blockPos, face, boardState) => {
     const [x, y, z] = blockPos
@@ -244,7 +246,7 @@ const doorRoundRule: DecorationRule = {
 const doorStraightRule: DecorationRule = {
   material: 'brick',
   category: 'primary',
-  decorationName: 'Door_Straight',
+  decorationNames: ['Door_Straight'],
   faces: ['left', 'right'],
   check: (blockPos, face, boardState) => {
     // Placeholder: same logic as Door_Round for now
@@ -253,73 +255,31 @@ const doorStraightRule: DecorationRule = {
   },
 }
 
-// Window_1 rule: Render on horizontal faces of brick blocks
-// TODO: Add specific rules for Window_1
-const window1Rule: DecorationRule = {
+// Window rule: Render on horizontal faces of brick blocks
+// All window decorations (Window_1, Window_2) share the same rules
+// No specific placement rules - uses random chance on all valid faces
+const windowRule: DecorationRule = {
   material: 'brick',
   category: 'primary',
-  decorationName: 'Window_1',
+  decorationNames: ['Window_1', 'Window_2'],
   faces: ['left', 'right', 'front', 'back'],
   check: (_blockPos, _face, _boardState) => {
-    // Placeholder: always return false for now
-    // TODO: Implement specific Window_1 rules
-    return false
+    // Always return true - random selection logic will decide placement
+    return true
   },
 }
 
-// Window_2 rule: Render on horizontal faces of brick blocks
-// TODO: Add specific rules for Window_2
-const window2Rule: DecorationRule = {
-  material: 'brick',
-  category: 'primary',
-  decorationName: 'Window_2',
-  faces: ['left', 'right', 'front', 'back'],
-  check: (_blockPos, _face, _boardState) => {
-    // Placeholder: always return false for now
-    // TODO: Implement specific Window_2 rules
-    return false
-  },
-}
-
-// Brick_Pattern_1 rule: Secondary decoration
-// TODO: Add specific rules for Brick_Pattern_1
-const brickPattern1Rule: DecorationRule = {
+// Brick_Pattern rule: Secondary decoration
+// All brick pattern decorations (Brick_Pattern_1, Brick_Pattern_2, Brick_Pattern_3) share the same rules
+// No specific placement rules - uses random chance on all valid faces
+const brickPatternRule: DecorationRule = {
   material: 'brick',
   category: 'secondary',
-  decorationName: 'Brick_Pattern_1',
+  decorationNames: ['Brick_Pattern_1', 'Brick_Pattern_2', 'Brick_Pattern_3'],
   faces: ['left', 'right', 'front', 'back'],
   check: (_blockPos, _face, _boardState) => {
-    // Placeholder: always return false for now
-    // TODO: Implement specific Brick_Pattern_1 rules
-    return false
-  },
-}
-
-// Brick_Pattern_2 rule: Secondary decoration
-// TODO: Add specific rules for Brick_Pattern_2
-const brickPattern2Rule: DecorationRule = {
-  material: 'brick',
-  category: 'secondary',
-  decorationName: 'Brick_Pattern_2',
-  faces: ['left', 'right', 'front', 'back'],
-  check: (_blockPos, _face, _boardState) => {
-    // Placeholder: always return false for now
-    // TODO: Implement specific Brick_Pattern_2 rules
-    return false
-  },
-}
-
-// Brick_Pattern_3 rule: Secondary decoration
-// TODO: Add specific rules for Brick_Pattern_3
-const brickPattern3Rule: DecorationRule = {
-  material: 'brick',
-  category: 'secondary',
-  decorationName: 'Brick_Pattern_3',
-  faces: ['left', 'right', 'front', 'back'],
-  check: (_blockPos, _face, _boardState) => {
-    // Placeholder: always return false for now
-    // TODO: Implement specific Brick_Pattern_3 rules
-    return false
+    // Always return true - random selection logic will decide placement
+    return true
   },
 }
 
@@ -327,11 +287,8 @@ const brickPattern3Rule: DecorationRule = {
 export const DECORATION_RULES: DecorationRule[] = [
   doorRoundRule,
   doorStraightRule,
-  window1Rule,
-  window2Rule,
-  brickPattern1Rule,
-  brickPattern2Rule,
-  brickPattern3Rule,
+  windowRule,
+  brickPatternRule,
 ]
 
 // Calculate rotation based on face direction
@@ -345,10 +302,10 @@ function getFaceRotation(face: FaceDirection): [number, number, number] {
       return [0, -Math.PI / 2, 0]
     case 'front':
       // Front face: rotate to face outward (toward positive Z)
-      return [0, 0, 0]
+      return [0, Math.PI, 0]
     case 'back':
       // Back face: rotate to face outward (toward negative Z)
-      return [0, Math.PI, 0]
+      return [0, 0, 0]
     case 'top':
       // Top face: rotate to face upward
       return [-Math.PI / 2, 0, 0]
@@ -361,8 +318,9 @@ function getFaceRotation(face: FaceDirection): [number, number, number] {
 }
 
 // Random selection: 50% chance for "none", remaining 50% split equally among matching decorations
-function selectRandomDecoration(matchingDecorations: DecorationRule[]): DecorationRule | null {
-  if (matchingDecorations.length === 0) {
+// Returns the selected decoration name, or null if no decoration should be placed
+function selectRandomDecoration(matchingRules: DecorationRule[]): string | null {
+  if (matchingRules.length === 0) {
     return null
   }
   
@@ -371,9 +329,13 @@ function selectRandomDecoration(matchingDecorations: DecorationRule[]): Decorati
     return null
   }
   
-  // 50% chance to randomly select one matching decoration
-  const randomIndex = Math.floor(Math.random() * matchingDecorations.length)
-  return matchingDecorations[randomIndex]
+  // 50% chance to randomly select one matching rule
+  const randomRuleIndex = Math.floor(Math.random() * matchingRules.length)
+  const selectedRule = matchingRules[randomRuleIndex]
+  
+  // Randomly select one decoration name from the rule's decorationNames array
+  const randomDecorationIndex = Math.floor(Math.random() * selectedRule.decorationNames.length)
+  return selectedRule.decorationNames[randomDecorationIndex]
 }
 
 // Get all decoration placements for a given board state
@@ -390,8 +352,8 @@ export function getDecorationPlacements(
   const categories: DecorationCategory[] = ['base', 'primary', 'secondary']
   const categoryDelays: Record<DecorationCategory, number> = {
     base: 50,
-    primary: 300,
-    secondary: 550,
+    primary: 600,
+    secondary: 300,
   }
   
   // Iterate through all blocks in board state
@@ -446,13 +408,13 @@ export function getDecorationPlacements(
           
           if (matchingRules.length > 0) {
             // Random selection: 50% none, 50% one of the matching decorations
-            const selectedRule = selectRandomDecoration(matchingRules)
+            const selectedDecorationName = selectRandomDecoration(matchingRules)
             
-            if (selectedRule) {
+            if (selectedDecorationName) {
               placements.push({
                 position: blockPos,
                 face,
-                decorationName: selectedRule.decorationName,
+                decorationName: selectedDecorationName,
                 rotation: getFaceRotation(face),
                 delay,
               })
