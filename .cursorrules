@@ -1,0 +1,275 @@
+# Three.js / React Three Fiber Project Rules
+
+## Project Structure
+
+### File Organization
+- Components live in `src/components/` directory
+- Each component is a separate file with PascalCase naming (e.g., `Sudo.js`, `Camera.js`)
+- GLB/GLTF models are stored in `public/` directory and referenced with absolute paths (e.g., `/level-react-draco.glb`)
+- Main Canvas setup is in `src/App.js`
+- Entry point is `src/index.js` with Suspense wrapper and Loader
+- Styles are in `src/styles.css`
+
+### Component Structure
+- Use functional components with default exports
+- Keep components focused and single-purpose
+- Components should be self-contained and reusable
+
+## React Three Fiber Patterns
+
+### Canvas Setup
+- Use `<Canvas>` from `@react-three/fiber` as the root container
+- Set `flat` prop for tone mapping
+- Use `dpr={[1, 2]}` for device pixel ratio
+- Configure camera with `camera={{ fov: 25, position: [0, 0, 8] }}`
+- Use `<color attach="background">` for scene background
+- Always include `<ambientLight />` for basic lighting
+
+### Hooks Usage
+- Use `useGLTF` from `@react-three/drei` to load GLB models: `const { nodes, materials } = useGLTF('/path-to-model.glb')`
+- Use `useThree` from `@react-three/fiber` to access camera, scene, etc.
+- Use `useSpring` and `useSpring` from `@react-spring/three` for animations
+- Destructure `nodes` and `materials` from `useGLTF` when needed
+
+### Drei Helpers
+- Use `PresentationControls` for interactive camera controls
+- Use `Loader` from `@react-three/drei` for loading states
+- Use `MeshWobbleMaterial` and other drei materials when appropriate
+- Use `useMatcapTexture` for matcap materials
+
+## Component Patterns
+
+### Functional Components
+```javascript
+export default function ComponentName() {
+  // hooks
+  const { nodes } = useGLTF('/model.glb')
+  
+  // effects and logic
+  
+  return (
+    <mesh geometry={nodes.NodeName.geometry} material={nodes.NodeName.material} />
+  )
+}
+```
+
+### Default Exports
+- Always use default exports for components
+- Import components without curly braces: `import ComponentName from './components/ComponentName'`
+
+### Props and Attributes
+- Use camelCase for Three.js props: `position-y`, `rotation-z`
+- Use array syntax for vectors: `position={[x, y, z]}`, `rotation={[x, y, z]}`
+- Use `attach` prop for material/geometry attachment: `attach="background"`
+
+## Animation Patterns
+
+### React Spring Integration
+- Import `useSpring` and `a` from `@react-spring/three`
+- Use `a.` prefix for animated elements: `<a.mesh>`, `<a.group>`
+- Configure spring with config object: `config: { friction: 40 }` or `config: { mass: 2, tension: 200 }`
+- Use array syntax for animated vectors: `rotation: [x, y, z]`
+- Use kebab-case for animated props: `'rotation-z': value`
+
+### Animation Setup Pattern
+```javascript
+const [spring, api] = useSpring(() => ({ 
+  rotation: [Math.PI / 2, 0, 0.29], 
+  config: { friction: 40 } 
+}), [])
+
+useEffect(() => {
+  let timeout
+  const animate = () => {
+    api.start({ rotation: [newX, newY, newZ] })
+    timeout = setTimeout(animate, delay)
+  }
+  animate()
+  return () => clearTimeout(timeout)
+}, [])
+```
+
+### Animation Best Practices
+- Always clean up timeouts in useEffect return function
+- Use `api.start()` to trigger animations
+- Store timeout references for cleanup
+- Use random delays for organic movement: `(1 + Math.random() * 3) * 1000`
+
+## Three.js Integration
+
+### THREE Namespace
+- Import THREE utilities: `import * as THREE from 'three'`
+- Use `THREE.MathUtils` for math utilities: `THREE.MathUtils.randFloatSpread(2)`
+- Use `Math.PI` for rotations: `rotation={[Math.PI / 2, 0, 0]}`
+
+### Geometry and Materials
+- Access geometry from GLTF nodes: `geometry={nodes.NodeName.geometry}`
+- Access materials from GLTF nodes: `material={nodes.NodeName.material}`
+- Access materials from materials object: `material={materials.MaterialName}`
+- Use drei materials when needed: `<MeshWobbleMaterial />`, `<meshMatcapMaterial />`
+
+### Mesh Patterns
+- Use `<mesh>` for standard meshes
+- Use `<group>` to group multiple meshes
+- Set `dispose={null}` on groups to prevent automatic disposal when needed
+- Position meshes with `position` prop: `position={[x, y, z]}`
+- Rotate meshes with `rotation` prop: `rotation={[x, y, z]}`
+
+## Performance Optimization
+
+### Suspense and Loading
+- Wrap Canvas in `<Suspense fallback={null}>` in index.js
+- Use `<Loader />` from drei for loading feedback
+- Place Loader outside Suspense but inside root render
+
+### Disposal
+- Use `dispose={null}` on groups when you want to keep objects in memory
+- Let React Three Fiber handle automatic disposal by default
+- Clean up animations and timeouts in useEffect return functions
+
+### Best Practices
+- Keep components lightweight and focused
+- Use `useMemo` for expensive calculations if needed
+- Avoid creating new objects in render loops
+- Use drei helpers for optimized implementations
+
+## Code Style
+
+### Imports
+- Group imports: React first, then R3F, then drei, then local
+- Use named imports from libraries: `import { Canvas, useThree } from '@react-three/fiber'`
+- Use default imports for local components: `import ComponentName from './components/ComponentName'`
+
+### Naming Conventions
+- Components: PascalCase (e.g., `Sudo`, `Camera`, `Level`)
+- Files: Match component name (e.g., `Sudo.js`)
+- Variables: camelCase (e.g., `nodes`, `materials`, `spring`)
+- Constants: UPPER_SNAKE_CASE if needed
+
+### Code Organization
+- Hooks at the top of component
+- Effects after hooks
+- Return statement at the end
+- Keep JSX clean and readable
+
+### Cleanup Patterns
+```javascript
+useEffect(() => {
+  let timeout
+  const setup = () => {
+    // setup code
+    timeout = setTimeout(setup, delay)
+  }
+  setup()
+  return () => clearTimeout(timeout)
+}, [])
+```
+
+## Common Patterns
+
+### GLTF Model Loading
+```javascript
+const { nodes, materials } = useGLTF('/model.glb')
+// Access geometry: nodes.NodeName.geometry
+// Access material: nodes.NodeName.material or materials.MaterialName
+```
+
+### Animated Mesh
+```javascript
+const [spring] = useSpring(() => ({ rotation: [0, 0, 0] }), [])
+return <a.mesh geometry={nodes.Node.geometry} {...spring} />
+```
+
+### Camera Animation
+```javascript
+const { camera } = useThree()
+useSpring(() => ({
+  from: { y: camera.position.y + 5 },
+  to: { y: camera.position.y },
+  onChange: ({ value }) => {
+    camera.position.y = value.y
+    camera.lookAt(0, 0, 0)
+  }
+}), [])
+```
+
+### Interactive Controls
+```javascript
+<PresentationControls 
+  snap 
+  global 
+  zoom={0.8} 
+  rotation={[0, -Math.PI / 4, 0]} 
+  polar={[0, Math.PI / 4]} 
+  azimuth={[-Math.PI / 4, Math.PI / 4]}
+>
+  {/* scene content */}
+</PresentationControls>
+```
+
+## Do's and Don'ts
+
+### Do's
+- ✅ Use functional components with default exports
+- ✅ Use hooks for state and side effects
+- ✅ Clean up timeouts and subscriptions in useEffect
+- ✅ Use Suspense for async loading
+- ✅ Use drei helpers for common patterns
+- ✅ Use react-spring for animations
+- ✅ Keep components focused and single-purpose
+- ✅ Use camelCase for Three.js props
+- ✅ Use array syntax for vectors and rotations
+
+### Don'ts
+- ❌ Don't use class components
+- ❌ Don't forget to clean up timeouts
+- ❌ Don't create new objects in render loops
+- ❌ Don't use named exports for components
+- ❌ Don't access THREE directly without namespace when using utilities
+- ❌ Don't forget to wrap Canvas in Suspense
+- ❌ Don't use inline styles for Three.js objects
+- ❌ Don't mutate props directly
+
+## Project-Specific Notes
+
+### Current Tech Stack
+- React 17.0.2
+- React Three Fiber 7.0.21
+- @react-three/drei 7.26.1
+- @react-spring/three 9.3.1
+- Three.js 0.135.0
+- react-scripts 4.0.3
+
+### File Structure Reference
+- `src/App.js` - Main Canvas and scene setup
+- `src/index.js` - Entry point with Suspense and Loader
+- `src/components/` - All 3D components
+- `public/` - Static assets including GLB models
+- `src/styles.css` - Global styles
+
+### Common Component Patterns
+- Level.js - Uses useThree and useSpring for camera animation
+- Sudo.js - Uses useEffect with timeout for random animations
+- Camera.js - Uses animated group with rotation
+- Icon.js - Uses matcap texture and floating animation
+
+## When Adding New Components
+
+1. Create file in `src/components/ComponentName.js`
+2. Use default export functional component
+3. Import necessary hooks (useGLTF, useSpring, etc.)
+4. Load GLB if needed: `const { nodes, materials } = useGLTF('/model.glb')`
+5. Set up animations with useSpring if needed
+6. Return JSX with Three.js elements
+7. Import and add to App.js in the scene group
+8. Clean up any timeouts or subscriptions in useEffect
+
+## Debugging Tips
+
+- Check browser console for Three.js warnings
+- Use drei's `<Stats>` component for performance monitoring
+- Verify GLB model paths are correct (absolute paths from public/)
+- Check that nodes/materials exist in the GLB file
+- Ensure Suspense is wrapping Canvas for async loading
+- Verify cleanup functions are working for animations
+
