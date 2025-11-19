@@ -9,7 +9,6 @@ import AxesHelper from './components/AxesHelper'
 import OptimizedBlocks from './components/OptimizedBlocks'
 import CameraControls from './components/CameraControls'
 import Tree from './components/Tree'
-import PerformanceStatsCollector from './components/PerformanceStatsCollector'
 import PerformanceStatsDisplay from './components/PerformanceStatsDisplay'
 import Decorations from './components/Decorations'
 import { useGameState } from './hooks/useGameState'
@@ -110,7 +109,6 @@ export default function App() {
         onToggleAxes={() => setShowAxes(!showAxes)}
       />
       <Canvas flat dpr={[1, 2]} shadows camera={{ fov: 75, position: [6, 6, 6] }}>
-        <PerformanceStatsCollector enabled={true} />
         {/* @ts-ignore - R3F color accepts hex strings */}
         <color attach="background" args={[SKY_COLOR]} />
         <ambientLight intensity={0.5} />

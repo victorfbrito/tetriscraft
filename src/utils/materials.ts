@@ -1,9 +1,9 @@
 export type MaterialType = 'grass' | 'brick' | 'wood'
 
 export const MATERIAL_COLORS: Record<MaterialType, string> = {
-  grass: '#b6d47c',
+  grass: '#bddf7b',
   brick: '#748e9b',
-  wood: '#b76d68',
+  wood: '#f4e9cb',
 }
 
 export const ROOF_COLOR = '#ff6663'

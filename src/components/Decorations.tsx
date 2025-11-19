@@ -9,20 +9,31 @@ interface DecorationsProps {
 }
 
 export default function Decorations({ boardState }: DecorationsProps) {
-  // Load brick decorations GLB file
-  const brickDecorations = useGLTF('/brick_decorations.glb') as any
-  const brickNodes = brickDecorations.nodes || {}
+  // Load block decorations GLB file (contains both brick and wood decorations)
+  const blockDecorations = useGLTF('/block_decorations.glb') as any
+  const decorationNodes = blockDecorations.nodes || {}
   
   // Log all available nodes for debugging
   useEffect(() => {
-    console.log('Brick decorations nodes:', Object.keys(brickNodes))
-    console.log('Brick decorations nodes details:', brickNodes)
-  }, [brickNodes])
+    console.log('Block decorations nodes:', Object.keys(decorationNodes))
+    console.log('Block decorations nodes details:', decorationNodes)
+  }, [decorationNodes])
+  
+  // Create a stable key from brick and wood block positions for memoization
+  const blockPositionsKey = useMemo(() => {
+    const positions: string[] = []
+    for (const [key, material] of boardState.entries()) {
+      if (material === 'brick' || material === 'wood') {
+        positions.push(key)
+      }
+    }
+    return positions.sort().join('|')
+  }, [boardState])
   
   // Calculate decoration placements based on rules
   const placements = useMemo(() => {
     return getDecorationPlacements(boardState)
-  }, [boardState])
+  }, [boardState, blockPositionsKey])
   
   // Group placements by decoration name to optimize node lookups
   const placementsByDecoration = useMemo(() => {
@@ -42,10 +53,10 @@ export default function Decorations({ boardState }: DecorationsProps) {
     <group>
       {Array.from(placementsByDecoration.entries()).map(([decorationName, decorationPlacements]) => {
         // Get the node for this decoration type
-        const decorationNode = brickNodes[decorationName]
+        const decorationNode = decorationNodes[decorationName]
         
         if (!decorationNode) {
-          console.warn(`Decoration node "${decorationName}" not found in brick_decorations.glb`)
+          console.warn(`Decoration node "${decorationName}" not found in block_decorations.glb`)
           return null
         }
         
@@ -57,6 +68,7 @@ export default function Decorations({ boardState }: DecorationsProps) {
             blockPosition={placement.position}
             face={placement.face}
             rotation={placement.rotation}
+            delay={placement.delay}
           />
         ))
       })}

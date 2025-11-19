@@ -118,7 +118,7 @@ function getTreePositionsForBlock(
 // Tree spawn density (0.0 to 1.0)
 // Lower values = fewer trees, higher values = more trees
 // Default: 0.6 means 60% of blocks will have trees (reduced from 100%)
-export const TREE_SPAWN_DENSITY = 0.4
+export const TREE_SPAWN_DENSITY = 0.2
 
 /**
  * Generate tree placements for grass blocks with natural variation

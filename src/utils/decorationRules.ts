@@ -34,7 +34,8 @@ export interface DecorationRule {
 function detectCorners(
   blockPos: Position,
   face: FaceDirection,
-  boardState: Map<string, MaterialType>
+  boardState: Map<string, MaterialType>,
+  material: MaterialType
 ): [boolean, boolean] {
   const [x, y, z] = blockPos
   let aKey: string  // Left side of current block
@@ -72,11 +73,11 @@ function detectCorners(
       return [false, false]
   }
   
-  // Only consider brick blocks (ignore grass base board and other materials)
-  const hasA = boardState.get(aKey) === 'brick'
-  const hasC = boardState.get(cKey) === 'brick'
-  const hasD = boardState.get(dKey) === 'brick'
-  const hasF = boardState.get(fKey) === 'brick'
+  // Only consider blocks of the same material (ignore grass base board and other materials)
+  const hasA = boardState.get(aKey) === material
+  const hasC = boardState.get(cKey) === material
+  const hasD = boardState.get(dKey) === material
+  const hasF = boardState.get(fKey) === material
   
   // Right corner: detected when there's a block on left (A) but not on right (C), creating internal angle
   // OR when there's a diagonal block (D) that creates a corner
@@ -175,7 +176,7 @@ function getBaseDecorations(
   }
   
   // 3. Detect corners and add corner decorations (with deduplication)
-  const [hasLeftCorner, hasRightCorner] = detectCorners(blockPos, face, boardState)
+  const [hasLeftCorner, hasRightCorner] = detectCorners(blockPos, face, boardState, 'brick')
   
   if (hasLeftCorner) {
     const leftCornerKey = getCornerKey(blockPos, face, true)
@@ -196,13 +197,211 @@ function getBaseDecorations(
   return decorations
 }
 
+// Get wood base decorations for a face
+// Returns array of decoration names that should be placed on this face
+function getWoodBaseDecorations(
+  blockPos: Position,
+  face: FaceDirection,
+  boardState: Map<string, MaterialType>,
+  decoratedCorners: Set<string>
+): string[] {
+  const decorations: string[] = []
+  const [x, y, z] = blockPos
+  
+  // 1. Always add Wood_Wall_Top_1
+  decorations.push('Wood_Wall_Top_1')
+  
+  // 2. Add Wood_Wall_Bottom_1 or Wood_Wall_Bottom_2 if there's NO wood block directly below
+  const blockBelowKey = `${x},${y - 1},${z}`
+  const blockBelow = boardState.get(blockBelowKey)
+  if (blockBelow !== 'wood') {
+    decorations.push('Wood_Wall_Bottom_1')
+  }
+  
+  // 3. Detect corners and add corner decorations (with deduplication)
+  const [hasLeftCorner, hasRightCorner] = detectCorners(blockPos, face, boardState, 'wood')
+  
+  if (hasLeftCorner) {
+    const leftCornerKey = getCornerKey(blockPos, face, true)
+    if (!decoratedCorners.has(leftCornerKey)) {
+      decorations.push('Wood_Wall_Corner_1')
+      decoratedCorners.add(leftCornerKey)
+    }
+  }
+  
+  if (hasRightCorner) {
+    const rightCornerKey = getCornerKey(blockPos, face, false)
+    if (!decoratedCorners.has(rightCornerKey)) {
+      decorations.push('Wood_Wall_Corner_2')
+      decoratedCorners.add(rightCornerKey)
+    }
+  }
+  
+  return decorations
+}
+
+// Get wood roof decorations based on adjacent faces
+// Returns array of placements (tiles on top, faces on front/back if applicable)
+function getWoodRoofDecorations(
+  blockPos: Position,
+  boardState: Map<string, MaterialType>
+): Array<{ face: FaceDirection; decorationName: string; rotation: [number, number, number] }> {
+  const placements: Array<{ face: FaceDirection; decorationName: string; rotation: [number, number, number] }> = []
+  const [x, y, z] = blockPos
+  
+  // Check adjacent blocks at the same Y level (left, right, front, back)
+  const leftKey = `${x - 1},${y},${z}`
+  const rightKey = `${x + 1},${y},${z}`
+  const frontKey = `${x},${y},${z + 1}`
+  const backKey = `${x},${y},${z - 1}`
+  
+  const hasLeft = boardState.get(leftKey) === 'wood'
+  const hasRight = boardState.get(rightKey) === 'wood'
+  const hasFront = boardState.get(frontKey) === 'wood'
+  const hasBack = boardState.get(backKey) === 'wood'
+  
+  const adjacentCount = [hasLeft, hasRight, hasFront, hasBack].filter(Boolean).length
+  
+  // Base rotation for top face - X and Z stay fixed, only Y rotates
+  const baseRotation: [number, number, number] = [0, 0, 0]
+  
+  // Determine roof tile type based on adjacent count (similar to brick roofs)
+  let roofTileName: string
+  let roofTileRotation: [number, number, number]
+  
+  switch (adjacentCount) {
+    case 0:
+      // No adjacent faces - Wood_Roof_Tiles_1 on base rotation
+      roofTileName = 'Wood_Roof_Tiles_1'
+      roofTileRotation = baseRotation
+      break
+    
+    case 1:
+      // One adjacent face - Wood_Roof_Tiles_3, rotate to point opposite
+      roofTileName = 'Wood_Roof_Tiles_1'
+      if (hasLeft) {
+        roofTileRotation = [0, -Math.PI / 2, 0]
+      } else if (hasRight) {
+        roofTileRotation = [0, Math.PI / 2, 0]
+      } else if (hasFront) {
+        roofTileRotation = [0, 0, 0]
+      } else {
+        // hasBack
+        roofTileRotation = [0, Math.PI, 0]
+      }
+      break
+    
+    case 2:
+      // Two adjacent faces - Wood_Roof_Tiles_4 and Wood_Roof_Tiles_1
+      if ((hasLeft && hasRight) || (hasFront && hasBack)) {
+      roofTileName = 'Wood_Roof_Tiles_1'
+        // Opposite faces - face the empty side
+        if (hasLeft && hasRight) {
+          roofTileRotation = hasFront 
+            ? [0, Math.PI, 0] // Face back
+            : [0, 0, 0] // Face front
+        } else {
+          // Front and back occupied
+          roofTileRotation = hasLeft
+            ? [0, -Math.PI / 2, 0] // Face right
+            : [0, Math.PI / 2, 0] // Face left
+        }
+      } else {
+        roofTileName = 'Wood_Roof_Tiles_4'
+        // Corner (two adjacent sides)
+        if (hasLeft && hasFront) {
+          roofTileRotation = [0, Math.PI, 0]
+        } else if (hasLeft && hasBack) {
+          roofTileRotation = [0, Math.PI / 2, 0]
+        } else if (hasRight && hasFront) {
+          roofTileRotation = [0, - Math.PI / 2, 0]
+        } else {
+          // hasRight && hasBack
+          roofTileRotation = [0, 0, 0]
+        }
+      }
+      break
+    
+    case 3:
+      // Three adjacent faces - Wood_Roof_Tiles_1, face the empty side
+      roofTileName = 'Wood_Roof_Tiles_1'
+      if (!hasLeft) {
+        roofTileRotation = [0, Math.PI / 2, 0]
+      } else if (!hasRight) {
+        roofTileRotation = [0, -Math.PI / 2, 0]
+      } else if (!hasFront) {
+        roofTileRotation = [0, Math.PI, 0]
+      } else {
+        // !hasBack
+        roofTileRotation = [0, 0, 0]
+      }
+      break
+    
+    case 4:
+      roofTileName = 'Wood_Roof_Tiles_2'
+      roofTileRotation = baseRotation
+      break
+      
+    default:
+      return []
+  }
+  
+  // Add roof tile on top face
+  placements.push({
+    face: 'top',
+    decorationName: roofTileName,
+    rotation: roofTileRotation,
+  })
+  
+  // Add Wood_Roof_Face based on adjacent count (renders on top face with rotation)
+  if (adjacentCount <= 1) {
+    if (adjacentCount === 1) {
+      // One adjacent block: render face on top, rotated to face opposite side
+      let faceRotation: [number, number, number]
+      if (hasLeft) {
+        // Adjacent on left, face right (opposite)
+        faceRotation = [0, -Math.PI / 2, 0]
+      } else if (hasRight) {
+        // Adjacent on right, face left (opposite)
+        faceRotation = [0, Math.PI / 2, 0]
+      } else if (hasFront) {
+        // Adjacent on front, face back (opposite)
+        faceRotation = [0, 0, 0]
+      } else {
+        // hasBack - Adjacent on back, face front (opposite)
+        faceRotation = [0, Math.PI, 0]
+      }
+      placements.push({
+        face: 'top',
+        decorationName: 'Wood_Roof_Face',
+        rotation: faceRotation,
+      })
+    } else {
+      // Zero adjacent blocks: render face on default side (front) AND opposite (back)
+      // Default side is front (0 rotation), opposite is back (180 degrees)
+      placements.push({
+        face: 'top',
+        decorationName: 'Wood_Roof_Face',
+        rotation: [0, 0, 0], // Face front (default)
+      })
+      placements.push({
+        face: 'top',
+        decorationName: 'Wood_Roof_Face',
+        rotation: [0, Math.PI, 0], // Face back (opposite of default)
+      })
+    }
+  }
+  
+  return placements
+}
+
 // Door rule: Render on horizontal faces (left/right/front/back) of brick blocks
-// All door decorations (Door_Round, Door_Straight) share the same rules
+// All door decorations (Brick_Door_1, Brick_Door_2) share the same rules
 // 25% total chance (12.5% each door type, 75% none) if there's ground ahead
 const doorRule: DecorationRule = {
   material: 'brick',
   category: 'primary',
-  decorationNames: ['Door_Round', 'Door_Straight'],
+  decorationNames: ['Brick_Door_1', 'Brick_Door_2'],
   faces: ['left', 'right', 'front', 'back'],
   check: (blockPos, face, boardState) => {
     const [x, y, z] = blockPos
@@ -238,12 +437,12 @@ const doorRule: DecorationRule = {
 }
 
 // Window rule: Render on horizontal faces of brick blocks
-// All window decorations (Window_1, Window_2) share the same rules
+// All window decorations (Brick_Window_1) share the same rules
 // No specific placement rules - uses random chance on all valid faces
 const windowRule: DecorationRule = {
   material: 'brick',
   category: 'primary',
-  decorationNames: ['Window_1', 'Window_2'],
+  decorationNames: ['Brick_Window_1'],
   faces: ['left', 'right', 'front', 'back'],
   check: (_blockPos, _face, _boardState) => {
     // Always return true - random selection logic will decide placement
@@ -265,11 +464,78 @@ const brickPatternRule: DecorationRule = {
   },
 }
 
+// Wood Door rule: Render on horizontal faces (left/right/front/back) of wood blocks
+// 25% total chance (25% door type, 75% none) if there's ground ahead
+const woodDoorRule: DecorationRule = {
+  material: 'wood',
+  category: 'primary',
+  decorationNames: ['Wood_Door_1'],
+  faces: ['left', 'right', 'front', 'back'],
+  check: (blockPos, face, boardState) => {
+    const [x, y, z] = blockPos
+    
+    // Check if there's a block on the ground right in front of the door
+    let groundInFrontKey: string
+    switch (face) {
+      case 'left':
+        groundInFrontKey = `${x - 1},${y - 1},${z}`
+        break
+      case 'right':
+        groundInFrontKey = `${x + 1},${y - 1},${z}`
+        break
+      case 'front':
+        groundInFrontKey = `${x},${y - 1},${z + 1}`
+        break
+      case 'back':
+        groundInFrontKey = `${x},${y - 1},${z - 1}`
+        break
+      default:
+    return false
+    }
+    
+    const groundInFront = boardState.get(groundInFrontKey)
+    
+    // Place decoration only if there's a block on the ground in front (any material)
+    return groundInFront !== undefined
+  },
+}
+
+// Wood Window rule: Render on horizontal faces of wood blocks
+// All window decorations (Wood_Window_1, Wood_Window_2) share the same rules
+// No specific placement rules - uses random chance on all valid faces
+const woodWindowRule: DecorationRule = {
+  material: 'wood',
+  category: 'primary',
+  decorationNames: ['Wood_Window_1', 'Wood_Window_2'],
+  faces: ['left', 'right', 'front', 'back'],
+  check: (_blockPos, _face, _boardState) => {
+    // Always return true - random selection logic will decide placement
+    return true
+  },
+}
+
+// Wood_Pattern rule: Secondary decoration
+// All wood pattern decorations (Wood_Pattern_1, Wood_Pattern_2, Wood_Pattern_3) share the same rules
+// No specific placement rules - uses random chance on all valid faces
+const woodPatternRule: DecorationRule = {
+  material: 'wood',
+  category: 'secondary',
+  decorationNames: ['Wood_Pattern_1', 'Wood_Pattern_2', 'Wood_Pattern_3'],
+  faces: ['left', 'right', 'front', 'back'],
+  check: (_blockPos, _face, _boardState) => {
+    // Always return true - random selection logic will decide placement
+    return true
+  },
+}
+
 // Export all decoration rules
 export const DECORATION_RULES: DecorationRule[] = [
   doorRule,
   windowRule,
   brickPatternRule,
+  woodDoorRule,
+  woodWindowRule,
+  woodPatternRule,
 ]
 
 // Get roof decoration type and rotation based on adjacent faces
@@ -293,8 +559,8 @@ function getRoofDecoration(
   
   const adjacentCount = [hasLeft, hasRight, hasFront, hasBack].filter(Boolean).length
   
-  // Base rotation for top face
-  const baseRotation: [number, number, number] = [-Math.PI / 2, 0, 0]
+  // Base rotation for top face - X and Z stay fixed, only Y rotates
+  const baseRotation: [number, number, number] = [0, 0, 0]
   
   switch (adjacentCount) {
     case 0:
@@ -308,17 +574,17 @@ function getRoofDecoration(
       // One adjacent face - Brick_Roof_4, rotate to point opposite
       let rotation4: [number, number, number]
       if (hasLeft) {
-        // Adjacent on left, point right (opposite)
-        rotation4 = [-Math.PI / 2, -Math.PI / 2, 0]
+        // Adjacent on left, point right (opposite) - rotate Z by -90 degrees
+        rotation4 = [0, -Math.PI / 2, 0]
       } else if (hasRight) {
-        // Adjacent on right, point left (opposite)
-        rotation4 = [-Math.PI / 2, Math.PI / 2, 0]
+        // Adjacent on right, point left (opposite) - rotate Z by 90 degrees
+        rotation4 = [0, Math.PI / 2, 0]
       } else if (hasFront) {
-        // Adjacent on front, point back (opposite)
-        rotation4 = [-Math.PI / 2, Math.PI, 0]
+        // Adjacent on front, point back (opposite) - rotate Z by 180 degrees
+        rotation4 = [0, 0, 0]
       } else {
-        // hasBack - Adjacent on back, point front (opposite)
-        rotation4 = [-Math.PI / 2, 0, 0]
+        // hasBack - Adjacent on back, point front (opposite) - no Z rotation
+        rotation4 = [0, Math.PI, 0]
       }
       return {
         decorationName: 'Brick_Roof_4',
@@ -333,13 +599,13 @@ function getRoofDecoration(
         if (hasLeft && hasRight) {
           // Left and right occupied, face front or back (whichever is empty)
           rotation2 = hasFront 
-            ? [-Math.PI / 2, Math.PI, 0] // Face back
-            : [-Math.PI / 2, 0, 0] // Face front
+            ? [0, Math.PI, 0] // Face back
+            : [0, 0, 0] // Face front
         } else {
           // Front and back occupied, face left or right (whichever is empty)
           rotation2 = hasLeft
-            ? [-Math.PI / 2, -Math.PI / 2, 0] // Face right
-            : [-Math.PI / 2, Math.PI / 2, 0] // Face left
+            ? [0, -Math.PI / 2, 0] // Face right
+            : [0, Math.PI / 2, 0] // Face left
         }
         return {
           decorationName: 'Brick_Roof_2',
@@ -351,17 +617,17 @@ function getRoofDecoration(
         // Determine which corner and rotate appropriately
         let rotation3: [number, number, number]
         if (hasLeft && hasFront) {
-          // Corner: left-front, point toward back-right
-          rotation3 = [-Math.PI / 2, Math.PI / 4, 0]
+          // Corner: left-front, point toward back-right - rotate Z by -180 degrees
+          rotation3 = [0, Math.PI * 2, 0]
         } else if (hasLeft && hasBack) {
-          // Corner: left-back, point toward front-right
-          rotation3 = [-Math.PI / 2, -Math.PI / 4, 0]
+          // Corner: left-back, point toward front-right - rotate Z by 90 degrees
+          rotation3 = [0, -Math.PI / 2, 0]
         } else if (hasRight && hasFront) {
-          // Corner: right-front, point toward back-left
-          rotation3 = [-Math.PI / 2, 3 * Math.PI / 4, 0]
+          // Corner: right-front, point toward back-left - rotate Z by -90 degrees
+          rotation3 = [0, Math.PI / 2, 0]
         } else {
-          // hasRight && hasBack - Corner: right-back, point toward front-left
-          rotation3 = [-Math.PI / 2, -3 * Math.PI / 4, 0]
+          // hasRight && hasBack - Corner: right-back, point toward front-left - rotate Z by 180 degrees
+          rotation3 = [0, Math.PI, 0]
         }
         return {
           decorationName: 'Brick_Roof_3',
@@ -373,17 +639,17 @@ function getRoofDecoration(
       // Three adjacent faces - Brick_Roof_1, face the empty side
       let rotation1: [number, number, number]
       if (!hasLeft) {
-        // Left is empty, face left
-        rotation1 = [-Math.PI / 2, Math.PI / 2, 0]
+        // Left is empty, face left - rotate Z by 90 degrees
+        rotation1 = [0, Math.PI / 2, 0]
       } else if (!hasRight) {
-        // Right is empty, face right
-        rotation1 = [-Math.PI / 2, -Math.PI / 2, 0]
+        // Right is empty, face right - rotate Z by -90 degrees
+        rotation1 = [0, -Math.PI / 2, 0]
       } else if (!hasFront) {
-        // Front is empty, face front
-        rotation1 = [-Math.PI / 2, 0, 0]
+        // Front is empty, face front - no Z rotation
+        rotation1 = [0, Math.PI, 0]
       } else {
-        // Back is empty, face back
-        rotation1 = [-Math.PI / 2, Math.PI, 0]
+        // Back is empty, face back - rotate Z by 180 degrees
+        rotation1 = [0, 0, 0]
       }
       return {
         decorationName: 'Brick_Roof_1',
@@ -451,10 +717,13 @@ function selectRandomDecoration(
     return null
   }
   
-  // Check if this is a door rule (has Door_Round or Door_Straight)
-  const isDoorRule = matchingRules.some(rule => 
-    rule.decorationNames.includes('Door_Round') || 
-    rule.decorationNames.includes('Door_Straight')
+  // Check if this is a door rule (has Brick_Door or Wood_Door)
+  const isBrickDoorRule = matchingRules.some(rule => 
+    rule.decorationNames.includes('Brick_Door_1') || 
+    rule.decorationNames.includes('Brick_Door_2')
+  )
+  const isWoodDoorRule = matchingRules.some(rule => 
+    rule.decorationNames.includes('Wood_Door_1')
   )
   
   // Collect all possible decoration names from all matching rules
@@ -465,8 +734,12 @@ function selectRandomDecoration(
   
   // Create options array with weighted probabilities
   let options: Array<string | null>
-  if (isDoorRule) {
-    // Doors: 25% total (12.5% each door type), 75% none
+  if (isBrickDoorRule) {
+    // Brick doors: 25% total (12.5% each door type), 75% none
+    // Add "none" 3 times to give it 3x weight (3/4 = 75%)
+    options = [...allDecorationNames, null, null, null]
+  } else if (isWoodDoorRule) {
+    // Wood doors: 25% total (25% door type), 75% none
     // Add "none" 3 times to give it 3x weight (3/4 = 75%)
     options = [...allDecorationNames, null, null, null]
   } else {
@@ -521,7 +794,7 @@ export function getDecorationPlacements(
       )
       
       if (category === 'base') {
-        // Base decorations: render multiple decorations on visible horizontal faces of brick blocks
+        // Base decorations: render multiple decorations on visible horizontal faces
         if (material === 'brick') {
           for (const face of visibleHorizontalFaces) {
             // Get all base decorations for this face (Top, Bottom, Corner_1, Corner_2)
@@ -550,6 +823,40 @@ export function getDecorationPlacements(
               placements.push({
                 position: blockPos,
                 face: 'top',
+                decorationName: roofDecoration.decorationName,
+                rotation: roofDecoration.rotation,
+                delay,
+              })
+            }
+          }
+        } else if (material === 'wood') {
+          for (const face of visibleHorizontalFaces) {
+            // Get all wood base decorations for this face (Top_1, Bottom_1/2, Corner_1, Corner_2)
+            const decorationNames = getWoodBaseDecorations(blockPos, face, boardState, decoratedCorners)
+            
+            // Create a placement for each decoration
+            for (const decorationName of decorationNames) {
+            placements.push({
+              position: blockPos,
+              face,
+              decorationName,
+              rotation: getFaceRotation(face),
+              delay,
+            })
+            }
+          }
+          
+          // Add wood roof decorations on top face (and front/back for faces) if there's no block above
+          // Check if there's no block directly above (which also means top face is visible)
+          const blockAboveKey = `${x},${y + 1},${z}`
+          const blockAbove = boardState.get(blockAboveKey)
+          // Only place roof if there's no block above at all (undefined)
+          if (blockAbove === undefined) {
+            const woodRoofDecorations = getWoodRoofDecorations(blockPos, boardState)
+            for (const roofDecoration of woodRoofDecorations) {
+              placements.push({
+                position: blockPos,
+                face: roofDecoration.face,
                 decorationName: roofDecoration.decorationName,
                 rotation: roofDecoration.rotation,
                 delay,
