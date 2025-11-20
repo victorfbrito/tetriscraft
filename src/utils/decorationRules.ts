@@ -224,7 +224,7 @@ function getWoodBaseDecorations(
   if (hasLeftCorner) {
     const leftCornerKey = getCornerKey(blockPos, face, true)
     if (!decoratedCorners.has(leftCornerKey)) {
-      decorations.push('Wood_Wall_Corner_1')
+      decorations.push('Wood_Wall_Corner_1_Right')
       decoratedCorners.add(leftCornerKey)
     }
   }
@@ -232,7 +232,7 @@ function getWoodBaseDecorations(
   if (hasRightCorner) {
     const rightCornerKey = getCornerKey(blockPos, face, false)
     if (!decoratedCorners.has(rightCornerKey)) {
-      decorations.push('Wood_Wall_Corner_2')
+      decorations.push('Wood_Wall_Corner_1_Left')
       decoratedCorners.add(rightCornerKey)
     }
   }
@@ -299,7 +299,7 @@ function getWoodRoofDecorations(
         if (hasLeft && hasRight) {
           roofTileRotation = hasFront 
             ? [0, Math.PI, 0] // Face back
-            : [0, 0, 0] // Face front
+            : [0, Math.PI / 2, 0] // Face front
         } else {
           // Front and back occupied
           roofTileRotation = hasLeft
@@ -682,7 +682,7 @@ function getFaceRotation(face: FaceDirection): [number, number, number] {
       return [0, 0, 0]
     case 'top':
       // Top face: rotate to face upward
-      return [-Math.PI / 2, 0, 0]
+      return [0, 0, 0]
     case 'bottom':
       // Bottom face: rotate to face downward
       return [Math.PI / 2, 0, 0]
@@ -859,6 +859,19 @@ export function getDecorationPlacements(
                 face: roofDecoration.face,
                 decorationName: roofDecoration.decorationName,
                 rotation: roofDecoration.rotation,
+                delay,
+              })
+            }
+            
+            // Add Chimney_1 decoration on top face with 25% chance
+            const chimneySeed = `${blockPos.join(',')}-top-chimney`
+            const chimneyRandom = seededRandom(chimneySeed)
+            if (chimneyRandom < 0.25) {
+              placements.push({
+                position: blockPos,
+                face: 'top',
+                decorationName: 'Chimney_1',
+                rotation: getFaceRotation('top'),
                 delay,
               })
             }
