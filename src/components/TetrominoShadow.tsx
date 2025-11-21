@@ -37,7 +37,7 @@ export default function TetrominoShadow({
     }
 
     return generateAllQuads(occupiedBlocks)
-      .filter((quad) => quad.direction !== 'bottom') // bottom faces are rarely visible
+      .filter((quad) => quad.direction !== 'bottom')
   }, [blockPositions, landingY, position])
   
   // Fade out shadow as tetromino drops
