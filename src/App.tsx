@@ -122,7 +122,7 @@ export default function App() {
         onToggleCyclePath={() => setShowCyclePath(!showCyclePath)}
         cycleHour={cycleState?.hour ?? 12}
       />
-      <Canvas flat dpr={[1, 2]} shadows camera={{ fov: 75, position: [6, 6, 6] }}>
+      <Canvas flat dpr={[1, 2]} shadows camera={{ fov: 25, position: [12, 12, 12] }}>
         <DayNightCycleProvider
           speedMultiplier={cycleSpeed}
           isPaused={isCyclePaused}
