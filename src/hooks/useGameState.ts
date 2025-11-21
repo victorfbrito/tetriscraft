@@ -82,7 +82,11 @@ export function useGameState() {
   }, [])
 
   // Board size constant (should match Board component default size)
-  const BOARD_SIZE = 16
+  const BOARD_SIZE = 4
+  // Calculate board bounds for integer grid (center at [1, 1, 1])
+  // For size 16: minCoord = 1 - floor(16/2) = -7, maxCoord = 1 + floor(15/2) = 8
+  const BOARD_MIN = 1 - Math.floor(BOARD_SIZE / 2) // -7 for size 16
+  const BOARD_MAX = 1 + Math.floor((BOARD_SIZE - 1) / 2) // 8 for size 16
   
   // Initialize board with base board grass blocks only
   const initializeBoard = (): [Map<string, MaterialType>, number] => {
@@ -110,6 +114,72 @@ export function useGameState() {
     return initialState
   })
 
+  const boardPositionList = useMemo(() => {
+    return Array.from(boardState.keys()).map((key) => {
+      const [x, y, z] = key.split(',').map(Number)
+      return [x, y, z] as Position
+    })
+  }, [boardState])
+
+  const boardPositionSet = useMemo(() => new Set(boardState.keys()), [boardState])
+
+  const getMinHorizontalDistanceToBoard = useCallback((
+    blockPositions: Position[]
+  ): number => {
+    if (boardPositionList.length === 0) {
+      return Infinity
+    }
+
+    let minDistance = Infinity
+    for (const [x, , z] of blockPositions) {
+      for (const [bx, , bz] of boardPositionList) {
+        const distance = Math.abs(x - bx) + Math.abs(z - bz)
+        if (distance < minDistance) {
+          minDistance = distance
+          if (minDistance <= 4) {
+            return minDistance
+          }
+        }
+      }
+    }
+    return minDistance
+  }, [boardPositionList])
+
+  const isWithinHorizontalRange = useCallback((
+    blockPositions: Position[]
+  ): boolean => {
+    const withinBoardBounds = blockPositions.every(([x, , z]) => {
+      return x >= BOARD_MIN && x <= BOARD_MAX && z >= BOARD_MIN && z <= BOARD_MAX
+    })
+
+    if (withinBoardBounds) {
+      return true
+    }
+
+    const minDistance = getMinHorizontalDistanceToBoard(blockPositions)
+    return minDistance <= 4
+  }, [BOARD_MIN, BOARD_MAX, getMinHorizontalDistanceToBoard])
+
+  const hasFaceAdjacencyToBoard = useCallback((
+    blockPositions: Position[]
+  ): boolean => {
+    for (const [x, y, z] of blockPositions) {
+      const neighborKeys = [
+        `${x + 1},${y},${z}`,
+        `${x - 1},${y},${z}`,
+        `${x},${y + 1},${z}`,
+        `${x},${y - 1},${z}`,
+        `${x},${y},${z + 1}`,
+        `${x},${y},${z - 1}`,
+      ]
+
+      if (neighborKeys.some((key) => boardPositionSet.has(key))) {
+        return true
+      }
+    }
+    return false
+  }, [boardPositionSet])
+
   // Highest block Y position on board
   const [highestY, setHighestY] = useState<number>(() => {
     const [, initialHighestY] = initializeBoard()
@@ -118,10 +188,6 @@ export function useGameState() {
 
   // Selected queue index
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  // Calculate board bounds for integer grid (center at [1, 1, 1])
-  // For size 16: minCoord = 1 - floor(16/2) = -7, maxCoord = 1 + floor(15/2) = 8
-  const BOARD_MIN = 1 - Math.floor(BOARD_SIZE / 2) // -7 for size 16
-  const BOARD_MAX = 1 + Math.floor((BOARD_SIZE - 1) / 2) // 8 for size 16
 
   // Get the material of the block directly below a position
   const getBlockBelow = useCallback((
@@ -167,35 +233,40 @@ export function useGameState() {
     return false
   }, [])
 
-  // Check if a block position is valid according to material-based rules
-  // Also checks if adjacent blocks in the same tetromino provide support for floating
-  const isValidBlockPlacement = useCallback((
+  // Determine why a block placement would fail (null means valid)
+  const getBlockPlacementFailureReason = useCallback((
     blockPos: Position,
     material: MaterialType,
     boardState: Map<string, MaterialType>,
-    tetrominoBlockPositions?: Position[] // All blocks in the tetromino being placed
-  ): boolean => {
+    tetrominoBlockPositions?: Position[]
+  ): string | null => {
     const [x, y, z] = blockPos
     
-    // Check board bounds
-    if (x < BOARD_MIN || x > BOARD_MAX || z < BOARD_MIN || z > BOARD_MAX) return false
     // Check if position is occupied
     const key = `${x},${y},${z}`
-    if (boardState.has(key)) return false
+    if (boardState.has(key)) return 'Target cell already occupied'
     // Check collision with board surface
-    if (y <= 0) return false
+    if (y < 0) return 'Cannot place below board level'
 
     const blockBelow = getBlockBelow(x, y, z, boardState)
 
     // Rule 4: Grass blocks ALWAYS need grass below
     if (material === 'grass') {
-      return blockBelow === 'grass'
+      if (blockBelow === 'grass') {
+        return null
+      }
+
+      // Allow ground-level expansion when bordering existing blocks (verified separately)
+      if (y === 0) {
+        return null
+      }
+      return 'Grass must sit on grass or ground level'
     }
 
     // Rule 1: Wood blocks can be above any block
     if (material === 'wood') {
       if (blockBelow !== null) {
-        return true // Has support below
+        return null // Has support below
       }
       // Rule 3: Wood can float if adjacent same-material block (in tetromino or board) is supported
       // First check if adjacent block in same tetromino has support
@@ -212,19 +283,22 @@ export function useGameState() {
             // Check if this adjacent block has support below
             const adjBlockBelow = getBlockBelow(ax, ay, az, boardState)
             if (adjBlockBelow !== null) {
-              return true // Adjacent block in tetromino has support
+              return null // Adjacent block in tetromino has support
             }
           }
         }
       }
       // Also check boardState for adjacent same-material blocks with support
-      return hasAdjacentSameMaterialSupport(blockPos, material, boardState)
+      if (hasAdjacentSameMaterialSupport(blockPos, material, boardState)) {
+        return null
+      }
+      return 'Wood needs support below or adjacent supported wood'
     }
 
     // Rule 2: Brick blocks can be above brick or grass
     if (material === 'brick') {
       if (blockBelow === 'brick' || blockBelow === 'grass') {
-        return true // Has valid support below
+        return null // Has valid support below
       }
       if (blockBelow === null) {
         // Rule 3: Brick can float if adjacent same-material block (in tetromino or board) is supported
@@ -242,19 +316,48 @@ export function useGameState() {
               // Check if this adjacent block has support below
               const adjBlockBelow = getBlockBelow(ax, ay, az, boardState)
               if (adjBlockBelow !== null) {
-                return true // Adjacent block in tetromino has support
+                return null // Adjacent block in tetromino has support
               }
             }
           }
         }
         // Also check boardState for adjacent same-material blocks with support
-        return hasAdjacentSameMaterialSupport(blockPos, material, boardState)
+        if (hasAdjacentSameMaterialSupport(blockPos, material, boardState)) {
+          return null
+        }
+        return 'Brick needs support below or adjacent supported brick'
       }
-      return false // Brick cannot be above wood
+      return 'Brick cannot sit on wood'
     }
 
-    return false
+    return 'Unsupported material placement'
   }, [getBlockBelow, hasAdjacentSameMaterialSupport])
+
+  const evaluatePlacement = useCallback((
+    type: TetrominoType,
+    position: Position,
+    rotation: Rotation,
+    material: MaterialType
+  ): { valid: true } | { valid: false; reason: string } => {
+    const blockPositions = getTetrominoBlockPositions(type, position, rotation)
+
+    for (const blockPos of blockPositions) {
+      const reason = getBlockPlacementFailureReason(blockPos, material, boardState, blockPositions)
+      if (reason) {
+        return { valid: false, reason }
+      }
+    }
+
+    if (!isWithinHorizontalRange(blockPositions)) {
+      return { valid: false, reason: 'Preview exceeds 4-block horizontal range' }
+    }
+
+    if (material === 'grass' && !hasFaceAdjacencyToBoard(blockPositions)) {
+      return { valid: false, reason: 'Grass tetromino must touch an existing block' }
+    }
+
+    return { valid: true }
+  }, [boardState, getBlockPlacementFailureReason, getTetrominoBlockPositions, hasFaceAdjacencyToBoard, isWithinHorizontalRange])
 
   // Check if position is valid (within bounds, not colliding, and follows material rules)
   const isValidPosition = useCallback((
@@ -263,12 +366,8 @@ export function useGameState() {
     rotation: Rotation,
     material: MaterialType
   ): boolean => {
-    const blockPositions = getTetrominoBlockPositions(type, position, rotation)
-    
-    return blockPositions.every((blockPos) => {
-      return isValidBlockPlacement(blockPos, material, boardState, blockPositions)
-    })
-  }, [boardState, getTetrominoBlockPositions, isValidBlockPlacement])
+    return evaluatePlacement(type, position, rotation, material).valid
+  }, [evaluatePlacement])
 
   // Select tetromino from queue
   const selectTetromino = useCallback((index: number) => {
@@ -306,13 +405,12 @@ export function useGameState() {
       // Check if new position is valid (bounds and collision only, material rules checked at landing)
       const blockPositions = getTetrominoBlockPositions(prev.type, newPosition, prev.rotation)
       const hasCollision = blockPositions.some(([x, y, z]) => {
-        if (x < BOARD_MIN || x > BOARD_MAX || z < BOARD_MIN || z > BOARD_MAX) return true
         const key = `${x},${y},${z}`
         if (boardState.has(key)) return true
-        if (y <= 0) return true
+        if (y < 0) return true
         return false
       })
-      if (hasCollision) {
+      if (hasCollision || !isWithinHorizontalRange(blockPositions)) {
         return prev // Don't move if invalid
       }
       
@@ -321,7 +419,7 @@ export function useGameState() {
         position: newPosition,
       }
     })
-  }, [activeTetromino, isValidPosition])
+  }, [activeTetromino, getTetrominoBlockPositions, boardState, isWithinHorizontalRange])
 
   // Rotate active tetromino clockwise
   const rotateTetromino = useCallback(() => {
@@ -334,13 +432,12 @@ export function useGameState() {
       // Check if rotated position is valid (bounds and collision only, material rules checked at landing)
       const blockPositions = getTetrominoBlockPositions(prev.type, prev.position, newRotation)
       const hasCollision = blockPositions.some(([x, y, z]) => {
-        if (x < BOARD_MIN || x > BOARD_MAX || z < BOARD_MIN || z > BOARD_MAX) return true
         const key = `${x},${y},${z}`
         if (boardState.has(key)) return true
-        if (y <= 0) return true
+        if (y < 0) return true
         return false
       })
-      if (hasCollision) {
+      if (hasCollision || !isWithinHorizontalRange(blockPositions)) {
         return prev // Don't rotate if invalid
       }
       
@@ -349,7 +446,7 @@ export function useGameState() {
         rotation: newRotation,
       }
     })
-  }, [activeTetromino, isValidPosition])
+  }, [activeTetromino, boardState, getTetrominoBlockPositions, isWithinHorizontalRange])
 
   // Calculate landing Y position
   const calculateLandingY = useCallback((
@@ -361,16 +458,18 @@ export function useGameState() {
     let testY = position[1]
     
     // Move down until collision
-    while (testY > 1) {
+    while (testY > 0) {
       const testPositions = blockPositions.map(([x, , z]) => [x, testY - 1, z] as Position)
+      if (!isWithinHorizontalRange(testPositions)) {
+        break
+      }
+
       const hasCollision = testPositions.some(([x, y, z]) => {
-        // Check board bounds (integer grid: X/Z from BOARD_MIN to BOARD_MAX)
-        if (x < BOARD_MIN || x > BOARD_MAX || z < BOARD_MIN || z > BOARD_MAX) return true
         // Check if position is occupied by placed blocks
         const key = `${x},${y},${z}`
         if (boardState.has(key)) return true
         // Check collision with board surface (Y=0 is the board level)
-        if (y <= 0) return true
+        if (y < 0) return true
         return false
       })
       
@@ -378,8 +477,8 @@ export function useGameState() {
       testY--
     }
     
-    return Math.max(1, testY)
-  }, [boardState, getTetrominoBlockPositions])
+    return Math.max(0, testY)
+  }, [boardState, getTetrominoBlockPositions, isWithinHorizontalRange])
 
   // Complete the drop animation and update board state
   const completeDrop = useCallback(() => {
@@ -412,8 +511,18 @@ export function useGameState() {
     rotation: Rotation,
     material: MaterialType
   ): boolean => {
-    return isValidPosition(type, position, rotation, material)
-  }, [isValidPosition])
+    const result = evaluatePlacement(type, position, rotation, material)
+    if (!result.valid) {
+      console.log('[Tetromino Validation] Invalid landing attempt', {
+        type,
+        material,
+        position,
+        rotation,
+        reason: result.reason,
+      })
+    }
+    return result.valid
+  }, [evaluatePlacement])
 
   // Drop tetromino to landing position (triggers animation)
   const dropTetromino = useCallback(() => {
