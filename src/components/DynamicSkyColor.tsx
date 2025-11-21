@@ -32,9 +32,6 @@ const SKY_COLORS_BY_HOUR = [
     "#1a1a2e"
   ]
   
-  
-  
-
 const getColorForHour = (hour: number) => {
   const normalizedHour = ((Math.floor(hour) % 24) + 24) % 24
   return SKY_COLORS_BY_HOUR[normalizedHour] ?? SKY_COLORS_BY_HOUR[0]

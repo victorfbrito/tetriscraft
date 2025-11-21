@@ -56,17 +56,21 @@ const updateVisualMesh = (mesh: THREE.Mesh | null, position: Vec3, color: THREE.
 type DayNightCycleProps = {
   radius?: number // Radius of the circular path
   height?: number // Height of the lights above the scene
+  showPath?: boolean
 }
 
 export default function DayNightCycle({
   radius = 10,
   height = 8,
+  showPath = false,
 }: DayNightCycleProps) {
   const sunLightRef = useRef<THREE.DirectionalLight>(null)
   const moonLightRef = useRef<THREE.DirectionalLight>(null)
   const ambientLightRef = useRef<THREE.AmbientLight>(null)
   const sunVisualRef = useRef<THREE.Mesh>(null)
   const moonVisualRef = useRef<THREE.Mesh>(null)
+  const sunMarkerRef = useRef<THREE.Mesh>(null)
+  const moonMarkerRef = useRef<THREE.Mesh>(null)
   const getCycleState = useDayNightCycleSnapshot()
 
   const sunLightColorRef = useRef(new THREE.Color())
@@ -102,6 +106,9 @@ export default function DayNightCycle({
 
     updateVisualMesh(sunVisualRef.current, sunOrbit.position, sunVisualColor)
     updateVisualMesh(moonVisualRef.current, moonOrbit.position, COLORS.moonVisual)
+
+    updateVisualMesh(sunMarkerRef.current, sunOrbit.position, sunVisualColor)
+    updateVisualMesh(moonMarkerRef.current, moonOrbit.position, COLORS.moonVisual)
 
     if (ambientLightRef.current) {
       ambientLightRef.current.intensity = MIN_AMBIENT_INTENSITY + sunHeightFactor * AMBIENT_SCALE
@@ -156,6 +163,26 @@ export default function DayNightCycle({
           toneMapped={false}
         />
       </mesh>
+      {showPath && (
+        <group>
+          <mesh ref={sunMarkerRef}>
+            <sphereGeometry args={[0.2, 16, 16]} />
+            <meshStandardMaterial 
+              color={COLORS.sunVisualDay} 
+              emissive={COLORS.sunVisualDay} 
+              emissiveIntensity={0.8}
+            />
+          </mesh>
+          <mesh ref={moonMarkerRef}>
+            <sphereGeometry args={[0.15, 16, 16]} />
+            <meshStandardMaterial 
+              color={COLORS.moonVisual} 
+              emissive={COLORS.moonVisual} 
+              emissiveIntensity={0.6}
+            />
+          </mesh>
+        </group>
+      )}
     </>
   )
 }

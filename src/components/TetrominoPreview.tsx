@@ -27,7 +27,6 @@ function MiniTetromino({ type, material, isSelected = false, onClick }: MiniTetr
         camera={{ position: [3, 5, 3], fov: 50 }}
         style={{ width: '60px', height: '60px' }}
       >
-        <ambientLight intensity={0.6} />
         <directionalLight position={[2, 6, 2]} intensity={0.9} />
         <Tetromino type={type} position={[0, 0, 0]} material={material} />
       </Canvas>
