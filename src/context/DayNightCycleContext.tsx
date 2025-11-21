@@ -25,10 +25,12 @@ type DayNightCycleProviderProps = {
   onStateChange?: (state: DayNightCycleState) => void
 }
 
+const DAY_START_HOUR = 8
+
 const initialState: DayNightCycleState = {
-  cycleProgress: 0,
+  cycleProgress: DAY_START_HOUR / 24,
   sunHeightFactor: 1,
-  hour: 12,
+  hour: DAY_START_HOUR,
   shouldWindowsGlow: false,
   sunColorBlend: 1,
   isPaused: false,
@@ -47,12 +49,12 @@ export function DayNightCycleProvider({
   const stateRef = useRef<DayNightCycleState>(initialState)
   const listenersRef = useRef(new Set<() => void>())
 
-  const cycleTimeRef = useRef(0)
+  const cycleDuration = 120
+  const cycleTimeRef = useRef((DAY_START_HOUR / 24) * cycleDuration)
   const lastFrameTimeRef = useRef(0)
   const wasPausedRef = useRef(false)
   const speedMultiplierRef = useRef(speedMultiplier)
   const pausedRef = useRef(isPaused)
-  const cycleDuration = 120
 
   useEffect(() => {
     speedMultiplierRef.current = speedMultiplier
@@ -100,7 +102,7 @@ export function DayNightCycleProvider({
     const sunHeightFactor = (Math.sin(angle) + 1) / 2
     const rawHour = cycleProgress * 24
     const hour = ((rawHour % 24) + 24) % 24
-    const shouldWindowsGlow = hour >= 18 || hour < 6
+    const shouldWindowsGlow = hour >= 17 || hour < 5
     const sunColorBlend = THREE.MathUtils.clamp((sunHeightFactor - 0.6) / 0.3, 0, 1)
 
     const nextState: DayNightCycleState = {
