@@ -11,14 +11,21 @@ import CameraControls from './components/CameraControls'
 import Tree from './components/Tree'
 import PerformanceStatsDisplay from './components/PerformanceStatsDisplay'
 import Decorations from './components/Decorations'
+import DayNightCycle from './components/DayNightCycle'
 import { useGameState } from './hooks/useGameState'
 import { useTreePlacements } from './hooks/useTreePlacements'
 import './App.css'
-import { SKY_COLOR } from './utils/materials'
+import { DayNightCycleProvider } from './context/DayNightCycleContext'
+import type { DayNightCycleState } from './context/DayNightCycleContext'
+import DynamicSkyColor from './components/DynamicSkyColor'
 
 export default function App() {
   const [showWireframe, setShowWireframe] = useState(false)
   const [showAxes, setShowAxes] = useState(false)
+  const [cycleSpeed, setCycleSpeed] = useState(1.0) // Speed multiplier (0.1 to 5.0)
+  const [isCyclePaused, setIsCyclePaused] = useState(false)
+  const [showCyclePath, setShowCyclePath] = useState(false)
+  const [cycleState, setCycleState] = useState<DayNightCycleState | null>(null)
   const {
     queue,
     activeTetromino,
@@ -107,59 +114,62 @@ export default function App() {
         onToggleWireframe={() => setShowWireframe(!showWireframe)}
         showAxes={showAxes}
         onToggleAxes={() => setShowAxes(!showAxes)}
+        cycleSpeed={cycleSpeed}
+        onCycleSpeedChange={setCycleSpeed}
+        isCyclePaused={isCyclePaused}
+        onToggleCyclePause={() => setIsCyclePaused(!isCyclePaused)}
+        showCyclePath={showCyclePath}
+        onToggleCyclePath={() => setShowCyclePath(!showCyclePath)}
+        cycleHour={cycleState?.hour ?? 12}
       />
       <Canvas flat dpr={[1, 2]} shadows camera={{ fov: 75, position: [6, 6, 6] }}>
-        {/* @ts-ignore - R3F color accepts hex strings */}
-        <color attach="background" args={[SKY_COLOR]} />
-        <ambientLight intensity={0.5} />
-        <directionalLight 
-          position={[2, 5, 4]} 
-          intensity={1} 
-          castShadow
-          shadow-mapSize={[4096, 4096]}
-          shadow-camera-far={50}
-          shadow-camera-left={-10}
-          shadow-camera-right={10}
-          shadow-camera-top={10}
-          shadow-camera-bottom={-10}
-          shadow-bias={-0.0001}
-        />
-        {/* @ts-ignore - OrbitControls works without required props */}
-        <OrbitControls 
-          zoomSpeed={0.6} 
-          minDistance={3} 
-          maxDistance={80}
-          target={[1, 0, 1]}
-        />
-        <CameraControls
-          activeTetromino={activeTetromino}
-          moveTetromino={moveTetromino}
-          rotateTetromino={rotateTetromino}
-          dropTetromino={handleDropTetromino}
-        />
-        <group position-y={-0.75} dispose={null}>
-          <Suspense fallback={null}>
-            {/* Procedurally generated trees */}
-            {treePlacements.map((placement) => (
-              <Tree
-                key={placement.id}
-                treeId={placement.treeId}
-                position={placement.position}
-                swayOffset={placement.swayOffset}
-                rotation={placement.rotation}
-                removing={placement.removing}
-                onRemoveComplete={() => removeTree(placement.id)}
-              />
-            ))}
-          </Suspense>
-          {showAxes && <AxesHelper />}
-          <OptimizedBlocks 
-            boardState={boardState} 
-            wireframe={showWireframe} 
+        <DayNightCycleProvider
+          speedMultiplier={cycleSpeed}
+          isPaused={isCyclePaused}
+          onStateChange={setCycleState}
+        >
+          <DynamicSkyColor />
+          <DayNightCycle 
+            radius={10} 
+            height={8} 
+            showPath={showCyclePath}
           />
-          <Suspense fallback={null}>
-            <Decorations boardState={boardState} />
-          </Suspense>
+          {/* @ts-ignore - OrbitControls works without required props */}
+          <OrbitControls 
+            zoomSpeed={0.6} 
+            minDistance={3} 
+            maxDistance={80}
+            target={[1, 0, 1]}
+          />
+          <CameraControls
+            activeTetromino={activeTetromino}
+            moveTetromino={moveTetromino}
+            rotateTetromino={rotateTetromino}
+            dropTetromino={handleDropTetromino}
+          />
+          <group position-y={-0.75} dispose={null}>
+            <Suspense fallback={null}>
+              {/* Procedurally generated trees */}
+              {treePlacements.map((placement) => (
+                <Tree
+                  key={placement.id}
+                  treeId={placement.treeId}
+                  position={placement.position}
+                  swayOffset={placement.swayOffset}
+                  rotation={placement.rotation}
+                  removing={placement.removing}
+                  onRemoveComplete={() => removeTree(placement.id)}
+                />
+              ))}
+            </Suspense>
+            {showAxes && <AxesHelper />}
+            <OptimizedBlocks 
+              boardState={boardState} 
+              wireframe={showWireframe} 
+            />
+            <Suspense fallback={null}>
+              <Decorations boardState={boardState} />
+            </Suspense>
           {activeTetromino && (
             <>
               <Tetromino
@@ -179,31 +189,32 @@ export default function App() {
               />
             </>
           )}
-          {droppingTetromino && (
-            <>
-              <Tetromino
-                key={`dropping-${droppingTetromino.startPosition[0]}-${droppingTetromino.startPosition[1]}-${droppingTetromino.startPosition[2]}`}
-                type={droppingTetromino.type}
-                position={droppingTetromino.startPosition}
-                rotation={droppingTetromino.rotation}
-                material={droppingTetromino.material}
-                wireframe={showWireframe}
-                animated={true}
-                targetPosition={droppingTetromino.endPosition}
-                onAnimationComplete={completeDrop}
-              />
-              <TetrominoShadow
-                type={droppingTetromino.type}
-                position={droppingTetromino.startPosition}
-                rotation={droppingTetromino.rotation}
-                landingY={droppingTetromino.endPosition[1]}
-                isDropping={true}
-                startY={droppingTetromino.startPosition[1]}
-                isValid={true}
-              />
-            </>
-          )}
-        </group>
+            {droppingTetromino && (
+              <>
+                <Tetromino
+                  key={`dropping-${droppingTetromino.startPosition[0]}-${droppingTetromino.startPosition[1]}-${droppingTetromino.startPosition[2]}`}
+                  type={droppingTetromino.type}
+                  position={droppingTetromino.startPosition}
+                  rotation={droppingTetromino.rotation}
+                  material={droppingTetromino.material}
+                  wireframe={showWireframe}
+                  animated={true}
+                  targetPosition={droppingTetromino.endPosition}
+                  onAnimationComplete={completeDrop}
+                />
+                <TetrominoShadow
+                  type={droppingTetromino.type}
+                  position={droppingTetromino.startPosition}
+                  rotation={droppingTetromino.rotation}
+                  landingY={droppingTetromino.endPosition[1]}
+                  isDropping={true}
+                  startY={droppingTetromino.startPosition[1]}
+                  isValid={true}
+                />
+              </>
+            )}
+          </group>
+        </DayNightCycleProvider>
       </Canvas>
     </>
   )
