@@ -1,7 +1,8 @@
 import { useSpring, a, useSpringRef } from '@react-spring/three'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { type TetrominoType, getRotatedPositions } from './Tetromino'
+import { generateAllQuads, type Quad } from '../utils/greedyMeshing'
 
 interface TetrominoShadowProps {
   type: TetrominoType
@@ -24,7 +25,20 @@ export default function TetrominoShadow({
   isValid = true,
   shake = false,
 }: TetrominoShadowProps) {
-  const blockPositions = getRotatedPositions(type, rotation)
+  const blockPositions = useMemo(() => getRotatedPositions(type, rotation), [type, rotation])
+  const shadowQuads = useMemo(() => {
+    const occupiedBlocks = new Set<string>()
+    
+    for (const blockPos of blockPositions) {
+      const worldX = position[0] + blockPos[0]
+      const worldY = landingY + blockPos[1]
+      const worldZ = position[2] + blockPos[2]
+      occupiedBlocks.add(`${worldX},${worldY},${worldZ}`)
+    }
+
+    return generateAllQuads(occupiedBlocks)
+      .filter((quad) => quad.direction !== 'bottom') // bottom faces are rarely visible
+  }, [blockPositions, landingY, position])
   
   // Fade out shadow as tetromino drops
   const shadowSpring = useSpring({
@@ -66,27 +80,82 @@ export default function TetrominoShadow({
   
   return (
     <a.group position-x={shakeSpring.x} position-z={shakeSpring.z}>
-      {blockPositions.map((blockPos, index) => (
-        <mesh
-          key={index}
-          position={[
-            position[0] + blockPos[0],
-            landingY + blockPos[1],
-            position[2] + blockPos[2],
-          ]}
-        >
-          <boxGeometry args={[1, 1, 1]} />
-          {/* @ts-ignore - react-spring animated material type issue */}
-          <a.meshStandardMaterial
-            color={shadowColor}
-            opacity={shadowSpring.opacity}
-            transparent
-            emissive={new THREE.Color(shadowColor)}
-            emissiveIntensity={0.1}
-          />
-        </mesh>
-      ))}
+      {shadowQuads.map((quad, index) => {
+        const transform = getQuadTransform(quad)
+        if (!transform) return null
+
+        const { position: quadPosition, rotation: quadRotation, size } = transform
+
+        return (
+          <a.mesh key={`${quad.direction}-${index}-${quad.position.join(',')}`} position={quadPosition} rotation={quadRotation}>
+            <planeGeometry args={size} />
+            {/* @ts-ignore - react-spring animated material type issue */}
+            <a.meshStandardMaterial
+              color={shadowColor}
+              opacity={shadowSpring.opacity}
+              transparent
+              emissive={new THREE.Color(shadowColor)}
+              emissiveIntensity={0.1}
+              side={THREE.DoubleSide}
+            />
+          </a.mesh>
+        )
+      })}
     </a.group>
   )
+}
+
+interface QuadTransform {
+  position: [number, number, number]
+  rotation: [number, number, number]
+  size: [number, number]
+}
+
+function getQuadTransform(quad: Quad): QuadTransform | null {
+  const { position, direction, width, height } = quad
+  const [px, py, pz] = position
+  const halfWidth = (width - 1) / 2
+  const halfHeight = (height - 1) / 2
+
+  switch (direction) {
+    case 'top':
+      return {
+        position: [px + halfWidth, py + 0.5, pz + halfHeight],
+        rotation: [-Math.PI / 2, 0, 0],
+        size: [width, height],
+      }
+    case 'bottom':
+      return {
+        position: [px + halfWidth, py - 0.5, pz + halfHeight],
+        rotation: [Math.PI / 2, 0, 0],
+        size: [width, height],
+      }
+    case 'front':
+      return {
+        position: [px + halfWidth, py + halfHeight, pz + 0.5],
+        rotation: [0, 0, 0],
+        size: [width, height],
+      }
+    case 'back':
+      return {
+        position: [px + halfWidth, py + halfHeight, pz - 0.5],
+        rotation: [0, Math.PI, 0],
+        size: [width, height],
+      }
+    case 'right':
+      return {
+        position: [px + 0.5, py + halfHeight, pz + halfWidth],
+        rotation: [0, -Math.PI / 2, 0],
+        size: [width, height],
+      }
+    case 'left':
+      return {
+        position: [px - 0.5, py + halfHeight, pz + halfWidth],
+        rotation: [0, Math.PI / 2, 0],
+        size: [width, height],
+      }
+    default:
+      return null
+  }
 }
 
