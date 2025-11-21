@@ -4,7 +4,6 @@ import { type FaceDirection, isFaceVisible } from './faceCulling'
 type Position = [number, number, number]
 const STONE_DECORATIONS = ['Stone_1', 'Stone_2', 'Stone_3'] as const
 const STONE_SPAWN_CHANCE = 0.2
-const STONE_DECORATION_DELAY = 400
 const EMPTY_OCCUPIED_TOPS: ReadonlySet<string> = new Set()
 
 export type DecorationCategory = 'base' | 'primary' | 'secondary'
@@ -785,39 +784,40 @@ export function getDecorationPlacements(
     const [x, y, z] = key.split(',').map(Number) as Position
     const blockPos: Position = [x, y, z]
     
-    // Grass stones (including base layer)
-    if (material === 'grass') {
-      const hasTree = occupiedGrassTopSet.has(key)
-      const topVisible = isFaceVisible(blockPos, 'top', boardState)
-      
-      if (!hasTree && topVisible) {
-        const stoneSeed = `${key}-stone`
-        const stoneRoll = seededRandom(stoneSeed)
-        
-        if (stoneRoll < STONE_SPAWN_CHANCE) {
-          const variantRandom = seededRandom(`${stoneSeed}-variant`)
-          const variantIndex = Math.floor(variantRandom * STONE_DECORATIONS.length) % STONE_DECORATIONS.length
-          const decorationName = STONE_DECORATIONS[variantIndex]
-          
-          placements.push({
-            position: blockPos,
-            face: 'top',
-            decorationName,
-            rotation: getFaceRotation('top'),
-            delay: STONE_DECORATION_DELAY,
-          })
-        }
-      }
-    }
-    
-    // Skip base board blocks (Y=0) - structural decorations should only be on placed blocks above the base
-    if (y === 0) {
-      continue
-    }
-    
     // Process each category
     for (const category of categories) {
       const delay = categoryDelays[category]
+      
+      if (category === 'primary' && material === 'grass') {
+        const hasTree = occupiedGrassTopSet.has(key)
+        const topVisible = isFaceVisible(blockPos, 'top', boardState)
+        
+        if (!hasTree && topVisible) {
+          const stoneSeed = `${key}-stone`
+          const stoneRoll = seededRandom(stoneSeed)
+          
+          if (stoneRoll < STONE_SPAWN_CHANCE) {
+            const variantRandom = seededRandom(`${stoneSeed}-variant`)
+            const rotationRandom = seededRandom(`${stoneSeed}-rotation`)
+            const variantIndex = Math.floor(variantRandom * STONE_DECORATIONS.length) % STONE_DECORATIONS.length
+            const rotationIndex = Math.floor(rotationRandom * 4) % 4
+            const decorationName = STONE_DECORATIONS[variantIndex]
+            const rotation: [number, number, number] = [0, rotationIndex * (Math.PI / 2), 0]
+            
+            placements.push({
+              position: blockPos,
+              face: 'top',
+              decorationName,
+              rotation,
+              delay,
+            })
+          }
+        }
+      }
+      
+      if (y === 0) {
+        continue
+      }
       
       // Get all visible horizontal faces for this block
       const visibleHorizontalFaces = horizontalFaces.filter(face => 
