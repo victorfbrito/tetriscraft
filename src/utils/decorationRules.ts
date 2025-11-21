@@ -2,6 +2,10 @@ import { type MaterialType } from './materials'
 import { type FaceDirection, isFaceVisible } from './faceCulling'
 
 type Position = [number, number, number]
+const STONE_DECORATIONS = ['Stone_1', 'Stone_2', 'Stone_3'] as const
+const STONE_SPAWN_CHANCE = 0.2
+const STONE_DECORATION_DELAY = 400
+const EMPTY_OCCUPIED_TOPS: ReadonlySet<string> = new Set()
 
 export type DecorationCategory = 'base' | 'primary' | 'secondary'
 
@@ -758,10 +762,12 @@ function selectRandomDecoration(
 
 // Get all decoration placements for a given board state
 export function getDecorationPlacements(
-  boardState: Map<string, MaterialType>
+  boardState: Map<string, MaterialType>,
+  occupiedGrassTops?: Set<string>
 ): DecorationPlacement[] {
   const placements: DecorationPlacement[] = []
   const horizontalFaces: FaceDirection[] = ['left', 'right', 'front', 'back']
+  const occupiedGrassTopSet = occupiedGrassTops ?? EMPTY_OCCUPIED_TOPS
   
   // Track decorated corners to prevent duplicates when corners are shared between faces
   const decoratedCorners = new Set<string>()
@@ -779,7 +785,32 @@ export function getDecorationPlacements(
     const [x, y, z] = key.split(',').map(Number) as Position
     const blockPos: Position = [x, y, z]
     
-    // Skip base board blocks (Y=0) - decorations should only be on placed blocks above the base
+    // Grass stones (including base layer)
+    if (material === 'grass') {
+      const hasTree = occupiedGrassTopSet.has(key)
+      const topVisible = isFaceVisible(blockPos, 'top', boardState)
+      
+      if (!hasTree && topVisible) {
+        const stoneSeed = `${key}-stone`
+        const stoneRoll = seededRandom(stoneSeed)
+        
+        if (stoneRoll < STONE_SPAWN_CHANCE) {
+          const variantRandom = seededRandom(`${stoneSeed}-variant`)
+          const variantIndex = Math.floor(variantRandom * STONE_DECORATIONS.length) % STONE_DECORATIONS.length
+          const decorationName = STONE_DECORATIONS[variantIndex]
+          
+          placements.push({
+            position: blockPos,
+            face: 'top',
+            decorationName,
+            rotation: getFaceRotation('top'),
+            delay: STONE_DECORATION_DELAY,
+          })
+        }
+      }
+    }
+    
+    // Skip base board blocks (Y=0) - structural decorations should only be on placed blocks above the base
     if (y === 0) {
       continue
     }

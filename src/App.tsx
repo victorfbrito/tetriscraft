@@ -1,4 +1,4 @@
-import { useState, Suspense, useEffect, useRef } from 'react'
+import { useState, Suspense, useEffect, useRef, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import Tetromino from './components/Tetromino'
@@ -52,6 +52,18 @@ export default function App() {
     boardState,
     getTetrominoBlockPositions
   )
+
+  const treeOccupiedBlocks = useMemo(() => {
+    const occupied = new Set<string>()
+    treePlacements.forEach(({ position }) => {
+      const [treeX, treeY, treeZ] = position
+      const blockX = Math.round(treeX)
+      const blockY = Math.round(treeY - 0.5)
+      const blockZ = Math.round(treeZ)
+      occupied.add(`${blockX},${blockY},${blockZ}`)
+    })
+    return occupied
+  }, [treePlacements])
 
   // Track previous droppingTetromino to detect when drop completes
   const prevDroppingTetrominoRef = useRef(droppingTetromino)
@@ -168,7 +180,7 @@ export default function App() {
               wireframe={showWireframe} 
             />
             <Suspense fallback={null}>
-              <Decorations boardState={boardState} />
+              <Decorations boardState={boardState} treeOccupiedBlocks={treeOccupiedBlocks} />
             </Suspense>
           {activeTetromino && (
             <>

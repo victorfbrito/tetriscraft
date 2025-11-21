@@ -10,9 +10,10 @@ import { useDayNightCycleSnapshot } from '../context/DayNightCycleContext'
 
 interface DecorationsProps {
   boardState: Map<string, MaterialType>
+  treeOccupiedBlocks?: Set<string>
 }
 
-export default function Decorations({ boardState }: DecorationsProps) {
+export default function Decorations({ boardState, treeOccupiedBlocks }: DecorationsProps) {
   // Load block decorations GLB file (contains both brick and wood decorations)
   const blockDecorations = useGLTF('/block_decorations.glb') as any
   const decorationNodes = blockDecorations.nodes || {}
@@ -37,8 +38,8 @@ export default function Decorations({ boardState }: DecorationsProps) {
   
   // Calculate decoration placements based on rules
   const placements = useMemo(() => {
-    return getDecorationPlacements(boardState)
-  }, [boardState, blockPositionsKey])
+    return getDecorationPlacements(boardState, treeOccupiedBlocks)
+  }, [boardState, blockPositionsKey, treeOccupiedBlocks])
 
   const getCycleState = useDayNightCycleSnapshot()
   const [windowsLit, setWindowsLit] = useState(false)
