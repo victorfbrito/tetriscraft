@@ -1,16 +1,23 @@
+import { Grid } from './Grid'
+
 type Position = [number, number, number]
 
 // Face directions: top, bottom, front, back, right, left
 export type FaceDirection = 'top' | 'bottom' | 'front' | 'back' | 'right' | 'left'
 
 // Check if a face is visible (not blocked by adjacent block)
-// Accepts either Set<string> or Map<string, any> for occupied blocks
+// Accepts either Set<string>, Map<string, any>, or Grid for occupied blocks
 export function isFaceVisible(
   position: Position,
   direction: FaceDirection,
-  occupiedBlocks: Set<string> | Map<string, any>
+  occupiedBlocks: Set<string> | Map<string, any> | Grid
 ): boolean {
   const [x, y, z] = position
+
+  if (occupiedBlocks instanceof Grid) {
+    return occupiedBlocks.isFaceVisible(x, y, z, direction)
+  }
+
   let neighborKey: string
 
   switch (direction) {
@@ -42,10 +49,10 @@ export function isFaceVisible(
 }
 
 // Get all visible faces for a block
-// Accepts either Set<string> or Map<string, any> for occupied blocks
+// Accepts either Set<string>, Map<string, any>, or Grid for occupied blocks
 export function getVisibleFaces(
   position: Position,
-  occupiedBlocks: Set<string> | Map<string, any>
+  occupiedBlocks: Set<string> | Map<string, any> | Grid
 ): FaceDirection[] {
   const faces: FaceDirection[] = []
   const directions: FaceDirection[] = ['top', 'bottom', 'front', 'back', 'right', 'left']
@@ -85,4 +92,3 @@ export function getDecorationPosition(
       return [x, y, z]
   }
 }
-

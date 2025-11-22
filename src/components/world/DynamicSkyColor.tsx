@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useSpring } from '@react-spring/three'
 import * as THREE from 'three'
 
-import { useDayNightCycle } from '../context/DayNightCycleContext'
+import { useDayNightCycle } from '../../context/DayNightCycleContext'
 
 const SKY_COLORS_BY_HOUR = [
     "#1a1a2e",

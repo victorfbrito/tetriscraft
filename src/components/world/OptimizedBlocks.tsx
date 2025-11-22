@@ -1,8 +1,9 @@
 import { useMemo, useEffect, useRef } from 'react'
 import { useSpring, a } from '@react-spring/three'
 import * as THREE from 'three'
-import { generateAllQuads } from '../utils/greedyMeshing'
-import { type MaterialType, getMaterialColor } from '../utils/materials'
+import { generateAllQuads } from '../../utils/greedyMeshing'
+import { type MaterialType, getMaterialColor } from '../../utils/materials'
+import { Grid } from '../../utils/Grid'
 
 interface OptimizedBlocksProps {
   boardState: Map<string, MaterialType>
@@ -16,8 +17,16 @@ export default function OptimizedBlocks({
   // Track previous water block count to detect new water blocks
   const prevWaterBlockCountRef = useRef(0)
   
+  // Convert Map to Grid for greedy meshing if needed, or just pass Map if generateAllQuads handles it
+  // generateAllQuads accepts Map, so we can pass it directly.
+  // But wait, I refactored generateAllQuads to prefer Grid or Map.
+  // I should probably instantiate Grid here if I want to leverage its methods, but generateAllQuads handles both.
+  // However, for consistency with the plan, I should probably use Grid.
+  // But passing the map is fine as generateAllQuads converts or handles it.
+  
   // Group quads by material and create separate geometries for each material
   const materialGeometries = useMemo(() => {
+    // Pass boardState directly, it's a Map
     const quads = generateAllQuads(boardState)
     
     // Group quads by material

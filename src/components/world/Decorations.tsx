@@ -3,11 +3,11 @@ import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
-import { type MaterialType } from '../utils/materials'
-import { getDecorationPlacements, type DecorationPlacement } from '../utils/decorationRules'
+import { type MaterialType } from '../../utils/materials'
+import { getDecorationPlacements, type DecorationPlacement } from '../../rules'
 import DecorationInstance from './DecorationInstance'
 import AnimatedDecorationInstance from './AnimatedDecorationInstance'
-import { useDayNightCycleSnapshot } from '../context/DayNightCycleContext'
+import { useDayNightCycleSnapshot } from '../../context/DayNightCycleContext'
 
 interface DecorationsProps {
   boardState: Map<string, MaterialType>

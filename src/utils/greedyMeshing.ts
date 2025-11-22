@@ -1,5 +1,6 @@
 import { type FaceDirection } from './faceCulling'
 import { getVisibleFacesByLayer } from './visibleFaces'
+import { Grid } from './Grid'
 
 type Position = [number, number, number]
 
@@ -141,9 +142,9 @@ function greedyMeshLayer(
 }
 
 // Greedy meshing algorithm for a specific face direction
-// Accepts either Set<string> or Map<string, any> for occupied blocks
+// Accepts either Set<string>, Map<string, any>, or Grid for occupied blocks
 function greedyMeshFaces(
-  occupiedBlocks: Set<string> | Map<string, any>,
+  occupiedBlocks: Set<string> | Map<string, any> | Grid,
   direction: FaceDirection
 ): Quad[] {
   const layerMap = getVisibleFacesByLayer(occupiedBlocks, direction)
@@ -161,8 +162,8 @@ function greedyMeshFaces(
 }
 
 // Generate all quads for all visible faces
-// Accepts either Set<string> or Map<string, any> for occupied blocks
-export function generateAllQuads(occupiedBlocks: Set<string> | Map<string, any>): Quad[] {
+// Accepts either Set<string>, Map<string, any>, or Grid for occupied blocks
+export function generateAllQuads(occupiedBlocks: Set<string> | Map<string, any> | Grid): Quad[] {
   if (occupiedBlocks.size === 0) return []
   
   const directions: FaceDirection[] = ['top', 'bottom', 'front', 'back', 'right', 'left']
@@ -175,4 +176,3 @@ export function generateAllQuads(occupiedBlocks: Set<string> | Map<string, any>)
   
   return allQuads
 }
-

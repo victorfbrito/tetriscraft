@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { type TetrominoType, getRotatedPositions } from '../components/Tetromino'
+import { type TetrominoType, getRotatedPositions } from '../components/game/Tetromino'
 import { type MaterialType } from '../utils/materials'
 
 type Position = [number, number, number]
@@ -624,4 +624,3 @@ export function useGameState() {
     currentLandingIsValid,
   }
 }
-

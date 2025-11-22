@@ -1,7 +1,7 @@
 import { useMemo, memo } from 'react'
 import { useSpring, a } from '@react-spring/three'
 import * as THREE from 'three'
-import { type FaceDirection, getDecorationPosition } from '../utils/faceCulling'
+import { type FaceDirection, getDecorationPosition } from '../../utils/faceCulling'
 
 interface DecorationInstanceProps {
   node: any // GLTF node (can be Mesh or Group)

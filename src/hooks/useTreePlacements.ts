@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { type MaterialType } from '../utils/materials'
-import { type TetrominoType } from '../components/Tetromino'
+import { type TetrominoType } from '../components/game/Tetromino'
 import { getGrassBlockPositions, generateTreePlacements, type TreePlacement } from '../utils/treeGeneration'
 
 type Position = [number, number, number]
@@ -162,4 +162,3 @@ export function useTreePlacements(
     removeTree,
   }
 }
-

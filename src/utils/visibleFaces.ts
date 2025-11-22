@@ -1,13 +1,21 @@
 import { isFaceVisible, type FaceDirection } from './faceCulling'
+import { Grid } from './Grid'
 
 type Position = [number, number, number]
 
 // Return raw block positions whose face in the given direction is exposed
 export function getVisibleFacePositions(
-  occupiedBlocks: Set<string> | Map<string, any>,
+  occupiedBlocks: Set<string> | Map<string, any> | Grid,
   direction: FaceDirection
 ): Position[] {
-  const keys = Array.from(occupiedBlocks.keys())
+  // Get keys based on input type
+  let keys: string[]
+  if (occupiedBlocks instanceof Grid) {
+    keys = Array.from(occupiedBlocks.getRawState().keys())
+  } else {
+    keys = Array.from(occupiedBlocks.keys())
+  }
+  
   const visible: Position[] = []
 
   for (const key of keys) {
@@ -24,7 +32,7 @@ export function getVisibleFacePositions(
 
 // Shared helper that groups visible faces by layer (axis value) and material identifier
 export function getVisibleFacesByLayer(
-  occupiedBlocks: Set<string> | Map<string, any>,
+  occupiedBlocks: Set<string> | Map<string, any> | Grid,
   direction: FaceDirection
 ): Map<string, Position[]> {
   const layerMap = new Map<string, Position[]>()
@@ -32,7 +40,9 @@ export function getVisibleFacesByLayer(
 
   for (const [x, y, z] of visiblePositions) {
     let material = ''
-    if (occupiedBlocks instanceof Map) {
+    if (occupiedBlocks instanceof Grid) {
+      material = occupiedBlocks.get(x, y, z) || ''
+    } else if (occupiedBlocks instanceof Map) {
       material = occupiedBlocks.get(`${x},${y},${z}`) || ''
     }
 
@@ -60,5 +70,3 @@ export function getVisibleFacesByLayer(
 
   return layerMap
 }
-
-

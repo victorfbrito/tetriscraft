@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber'
 import Tetromino, { type TetrominoType } from './Tetromino'
-import { type MaterialType } from '../utils/materials'
+import { type MaterialType } from '../../utils/materials'
 
 interface MiniTetrominoProps {
   type: TetrominoType

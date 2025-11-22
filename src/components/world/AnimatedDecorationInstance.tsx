@@ -2,7 +2,7 @@ import { useMemo, memo, useEffect, useRef } from 'react'
 import { useSpring, a } from '@react-spring/three'
 import { useAnimations } from '@react-three/drei'
 import * as THREE from 'three'
-import { type FaceDirection, getDecorationPosition } from '../utils/faceCulling'
+import { type FaceDirection, getDecorationPosition } from '../../utils/faceCulling'
 
 interface AnimatedDecorationInstanceProps {
   node: any // GLTF node (can be Mesh or Group)

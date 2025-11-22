@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useDayNightCycleSnapshot } from '../context/DayNightCycleContext'
+import { useDayNightCycleSnapshot } from '../../context/DayNightCycleContext'
 
 type Vec3 = [number, number, number]
 

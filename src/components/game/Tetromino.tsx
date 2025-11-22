@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useSpring, a } from '@react-spring/three'
-import Block from './Block'
-import { type MaterialType } from '../utils/materials'
+import Block from '../world/Block'
+import { type MaterialType } from '../../utils/materials'
 
 // New tetromino types based on material-specific shapes
 // Each material type (grass, brick, wood, water) has different shape variants
@@ -78,10 +78,6 @@ const TETROMINO_SHAPES: Record<TetrominoType, [number, number, number][]> = {
     [0, 0, 2],  // Row 3: [1,1,1,0]
     [1, 0, 2],
     [2, 0, 2],
-    [0, 0, 3],  // Row 4: [1,1,1,1]
-    [1, 0, 3],
-    [2, 0, 3],
-    [3, 0, 3],
   ],
   // Brick: Single block (top-left cell)
   BRICK_SINGLE: [

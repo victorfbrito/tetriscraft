@@ -1,4 +1,4 @@
-import { type MaterialType, getMaterialColor } from '../utils/materials'
+import { type MaterialType, getMaterialColor } from '../../utils/materials'
 import * as THREE from 'three'
 
 interface BlockProps {

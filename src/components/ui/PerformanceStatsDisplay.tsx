@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { usePerformanceStats } from '../hooks/usePerformanceStats'
+import { usePerformanceStats } from '../../hooks/usePerformanceStats'
 
 export default function PerformanceStatsDisplay() {
   const stats = usePerformanceStats()

@@ -1,23 +1,23 @@
-import { useState, Suspense, useEffect, useRef, useMemo } from 'react'
+import { useState, Suspense, useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import Tetromino from './components/Tetromino'
-import TetrominoShadow from './components/TetrominoShadow'
-import TetrominoPreview from './components/TetrominoPreview'
-import GameMenu from './components/GameMenu'
-import AxesHelper from './components/AxesHelper'
-import OptimizedBlocks from './components/OptimizedBlocks'
-import CameraControls from './components/CameraControls'
-import Tree from './components/Tree'
-import PerformanceStatsDisplay from './components/PerformanceStatsDisplay'
-import Decorations from './components/Decorations'
-import DayNightCycle from './components/DayNightCycle'
+import Tetromino from './components/game/Tetromino'
+import TetrominoShadow from './components/game/TetrominoShadow'
+import TetrominoPreview from './components/game/TetrominoPreview'
+import GameMenu from './components/ui/GameMenu'
+import AxesHelper from './components/world/AxesHelper'
+import OptimizedBlocks from './components/world/OptimizedBlocks'
+import CameraControls from './components/world/CameraControls'
+import Tree from './components/world/Tree'
+import PerformanceStatsDisplay from './components/ui/PerformanceStatsDisplay'
+import Decorations from './components/world/Decorations'
+import DayNightCycle from './components/game/DayNightCycle'
 import { useGameState } from './hooks/useGameState'
 import { useTreePlacements } from './hooks/useTreePlacements'
 import './App.css'
 import { DayNightCycleProvider } from './context/DayNightCycleContext'
 import type { DayNightCycleState } from './context/DayNightCycleContext'
-import DynamicSkyColor from './components/DynamicSkyColor'
+import DynamicSkyColor from './components/world/DynamicSkyColor'
 
 export default function App() {
   const [showWireframe, setShowWireframe] = useState(false)
@@ -56,7 +56,7 @@ export default function App() {
   // Track previous droppingTetromino to detect when drop completes
   const prevDroppingTetrominoRef = useRef(droppingTetromino)
   
-  // Handle tetromino drop completion: remove trees under blocks, then add trees for grass blocks
+  // Handle tetromino drop completion: remove trees under blocks, then add trees for grass tetrominos
   useEffect(() => {
     if (prevDroppingTetrominoRef.current && !droppingTetromino) {
       // Drop just completed
@@ -90,17 +90,6 @@ export default function App() {
         activeTetromino.rotation
       )
     : 0
-
-  const waterBlocks = useMemo(() => {
-    const positions: Array<[number, number, number]> = []
-    boardState.forEach((material, key) => {
-      if (material === 'water') {
-        const [x, y, z] = key.split(',').map(Number) as [number, number, number]
-        positions.push([x, y, z])
-      }
-    })
-    return positions
-  }, [boardState])
 
   // Handle drop with validation and shake
   const handleDropTetromino = () => {
