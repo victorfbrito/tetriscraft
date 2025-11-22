@@ -21,7 +21,7 @@ export default function Tree({
   removing = false,
   onRemoveComplete
 }: TreeProps) {
-  const gltf = useGLTF("/trees.glb") as any
+  const gltf = useGLTF("/block_decorations.glb") as any
   const nodes = gltf.nodes || {}
 
   const group = useRef<THREE.Group>(null)
@@ -30,8 +30,21 @@ export default function Tree({
   // Auto-detect trunk and foliage nodes based on naming convention
   const { trunkNode, foliageNodes } = useMemo(() => {
     const id = String(treeId)
-    const trunkName = `Tree_${id}_Trunk`
-    const trunkNode = nodes[trunkName] || null
+    const preferredTrunkName = `Tree_${id}_Trunk`
+    let resolvedTrunkNode: any = nodes[preferredTrunkName] || null
+
+    if (!resolvedTrunkNode) {
+      const fallbackEntry = Object.entries(nodes).find(([nodeName]) => {
+        return (
+          nodeName.startsWith(`Tree_${id}`) &&
+          !/_Foliage_/i.test(nodeName)
+        )
+      })
+
+      if (fallbackEntry) {
+        resolvedTrunkNode = fallbackEntry[1]
+      }
+    }
 
     // Find all foliage nodes matching Tree_{id}_Foliage_*
     const foliagePattern = new RegExp(`^Tree_${id}_Foliage_(\\d+)$`)
@@ -53,7 +66,7 @@ export default function Tree({
     foliageEntries.sort((a, b) => a.number - b.number)
 
     return {
-      trunkNode,
+      trunkNode: resolvedTrunkNode,
       foliageNodes: foliageEntries.map((entry) => ({
         name: entry.name,
         node: entry.node,
@@ -61,15 +74,9 @@ export default function Tree({
     }
   }, [treeId, nodes])
 
-  // Debug: log detected nodes on first render
-  if (Object.keys(nodes).length > 0 && !group.current) {
-    console.log(`Tree ${treeId} - Trunk:`, trunkNode ? 'Found' : 'NOT FOUND')
-    console.log(`Tree ${treeId} - Foliage layers:`, foliageNodes.length, foliageNodes.map(f => f.name))
-  }
-
   // Check if trunk exists
   if (!trunkNode) {
-    console.warn(`Tree trunk "Tree_${treeId}_Trunk" not found in GLTF. Available nodes:`, Object.keys(nodes))
+    console.warn(`Tree trunk for tree ${treeId} not found in GLTF. Available nodes:`, Object.keys(nodes))
     return null
   }
 
@@ -123,11 +130,15 @@ export default function Tree({
   return (
     <a.group ref={group} position={position} rotation={rotation} scale={springs.scale}>
       {/* Trunk */}
-      <mesh
-        geometry={trunkNode.geometry}
-        material={trunkNode.material}
-        castShadow
-      />
+      {'geometry' in trunkNode && trunkNode.geometry ? (
+        <mesh
+          geometry={trunkNode.geometry}
+          material={trunkNode.material}
+          castShadow
+        />
+      ) : (
+        <primitive object={trunkNode} />
+      )}
 
       {/* Foliage pieces (auto-detected and sorted) */}
       {foliageNodes.map(({ name, node }, index) => {

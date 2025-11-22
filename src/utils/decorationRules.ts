@@ -2,9 +2,6 @@ import { type MaterialType } from './materials'
 import { type FaceDirection, isFaceVisible } from './faceCulling'
 
 type Position = [number, number, number]
-const STONE_DECORATIONS = ['Stone_1', 'Stone_2', 'Stone_3'] as const
-const STONE_SPAWN_CHANCE = 0.2
-const EMPTY_OCCUPIED_TOPS: ReadonlySet<string> = new Set()
 
 export type DecorationCategory = 'base' | 'primary' | 'secondary'
 
@@ -14,6 +11,8 @@ export interface DecorationPlacement {
   decorationName: string
   rotation: [number, number, number]
   delay: number
+  phaseIndex?: number // For animated decorations (water), used for phase-based timing
+  isAnimated?: boolean // Flag to indicate if this decoration needs animation support
 }
 
 export interface DecorationRule {
@@ -761,15 +760,21 @@ function selectRandomDecoration(
 
 // Get all decoration placements for a given board state
 export function getDecorationPlacements(
-  boardState: Map<string, MaterialType>,
-  occupiedGrassTops?: Set<string>
+  boardState: Map<string, MaterialType>
 ): DecorationPlacement[] {
+  console.log('[Decoration] Generating decorations for board state with', boardState.size, 'blocks')
   const placements: DecorationPlacement[] = []
   const horizontalFaces: FaceDirection[] = ['left', 'right', 'front', 'back']
-  const occupiedGrassTopSet = occupiedGrassTops ?? EMPTY_OCCUPIED_TOPS
   
   // Track decorated corners to prevent duplicates when corners are shared between faces
   const decoratedCorners = new Set<string>()
+  
+  // Debug: count blocks by material
+  const materialCounts = new Map<MaterialType, number>()
+  for (const [, material] of boardState.entries()) {
+    materialCounts.set(material, (materialCounts.get(material) || 0) + 1)
+  }
+  console.log('[Decoration] Block counts by material:', Object.fromEntries(materialCounts))
   
   // Process decorations by category: base, primary, secondary
   const categories: DecorationCategory[] = ['base', 'primary', 'secondary']
@@ -784,40 +789,15 @@ export function getDecorationPlacements(
     const [x, y, z] = key.split(',').map(Number) as Position
     const blockPos: Position = [x, y, z]
     
+    // Skip base board blocks (Y=0) - decorations should only be on placed blocks above the base
+    // Exception: allow water blocks at y=0
+    if (y === 0 && material !== 'water') {
+      continue
+    }
+    
     // Process each category
     for (const category of categories) {
       const delay = categoryDelays[category]
-      
-      if (category === 'primary' && material === 'grass') {
-        const hasTree = occupiedGrassTopSet.has(key)
-        const topVisible = isFaceVisible(blockPos, 'top', boardState)
-        
-        if (!hasTree && topVisible) {
-          const stoneSeed = `${key}-stone`
-          const stoneRoll = seededRandom(stoneSeed)
-          
-          if (stoneRoll < STONE_SPAWN_CHANCE) {
-            const variantRandom = seededRandom(`${stoneSeed}-variant`)
-            const rotationRandom = seededRandom(`${stoneSeed}-rotation`)
-            const variantIndex = Math.floor(variantRandom * STONE_DECORATIONS.length) % STONE_DECORATIONS.length
-            const rotationIndex = Math.floor(rotationRandom * 4) % 4
-            const decorationName = STONE_DECORATIONS[variantIndex]
-            const rotation: [number, number, number] = [0, rotationIndex * (Math.PI / 2), 0]
-            
-            placements.push({
-              position: blockPos,
-              face: 'top',
-              decorationName,
-              rotation,
-              delay,
-            })
-          }
-        }
-      }
-      
-      if (y === 0) {
-        continue
-      }
       
       // Get all visible horizontal faces for this block
       const visibleHorizontalFaces = horizontalFaces.filter(face => 
@@ -833,13 +813,14 @@ export function getDecorationPlacements(
             
             // Create a placement for each decoration
             for (const decorationName of decorationNames) {
-              placements.push({
+              const placement = {
                 position: blockPos,
                 face,
                 decorationName,
                 rotation: getFaceRotation(face),
                 delay,
-              })
+              }
+              placements.push(placement)
             }
           }
           
@@ -851,13 +832,14 @@ export function getDecorationPlacements(
           if (blockAbove === undefined) {
             const roofDecoration = getRoofDecoration(blockPos, boardState)
             if (roofDecoration) {
-              placements.push({
+              const placement: DecorationPlacement = {
                 position: blockPos,
-                face: 'top',
+                face: 'top' as FaceDirection,
                 decorationName: roofDecoration.decorationName,
                 rotation: roofDecoration.rotation,
                 delay,
-              })
+              }
+              placements.push(placement)
             }
           }
         } else if (material === 'wood') {
@@ -867,13 +849,14 @@ export function getDecorationPlacements(
             
             // Create a placement for each decoration
             for (const decorationName of decorationNames) {
-            placements.push({
-              position: blockPos,
-              face,
-              decorationName,
-              rotation: getFaceRotation(face),
-              delay,
-            })
+              const placement = {
+                position: blockPos,
+                face,
+                decorationName,
+                rotation: getFaceRotation(face),
+                delay,
+              }
+              placements.push(placement)
             }
           }
           
@@ -885,27 +868,108 @@ export function getDecorationPlacements(
           if (blockAbove === undefined) {
             const woodRoofDecorations = getWoodRoofDecorations(blockPos, boardState)
             for (const roofDecoration of woodRoofDecorations) {
-              placements.push({
+              const placement = {
                 position: blockPos,
                 face: roofDecoration.face,
                 decorationName: roofDecoration.decorationName,
                 rotation: roofDecoration.rotation,
                 delay,
-              })
+              }
+              placements.push(placement)
             }
             
             // Add Chimney_1 decoration on top face with 25% chance
             const chimneySeed = `${blockPos.join(',')}-top-chimney`
             const chimneyRandom = seededRandom(chimneySeed)
             if (chimneyRandom < 0.25) {
-              placements.push({
+              const placement: DecorationPlacement = {
                 position: blockPos,
-                face: 'top',
+                face: 'top' as FaceDirection,
                 decorationName: 'Chimney_1',
                 rotation: getFaceRotation('top'),
                 delay,
-              })
+              }
+              placements.push(placement)
             }
+          }
+        } else if (material === 'water') {
+          // Water decorations: place Waterfall and bubbles on visible side faces
+          for (const face of visibleHorizontalFaces) {
+            // Check if this face is exactly 1 block in size (not merged with adjacent blocks)
+            // A face is 1 block in size if:
+            // - For front/back: no block to the left or right has a visible front/back face
+            // - For left/right: no block in front or back has a visible left/right face
+            // - No block above or below has a visible face in the same direction
+            let isSingleBlockFace = true
+            
+            // Check horizontal neighbors (perpendicular to face direction)
+            if (face === 'front' || face === 'back') {
+              // Check left and right neighbors
+              const leftKey = `${x - 1},${y},${z}`
+              const rightKey = `${x + 1},${y},${z}`
+              const leftBlock = boardState.get(leftKey)
+              const rightBlock = boardState.get(rightKey)
+              
+              // If adjacent block exists and has the same material and visible face, face would be merged
+              if ((leftBlock === 'water' && isFaceVisible([x - 1, y, z], face, boardState)) ||
+                  (rightBlock === 'water' && isFaceVisible([x + 1, y, z], face, boardState))) {
+                isSingleBlockFace = false
+              }
+            } else if (face === 'left' || face === 'right') {
+              // Check front and back neighbors
+              const frontKey = `${x},${y},${z + 1}`
+              const backKey = `${x},${y},${z - 1}`
+              const frontBlock = boardState.get(frontKey)
+              const backBlock = boardState.get(backKey)
+              
+              // If adjacent block exists and has the same material and visible face, face would be merged
+              if ((frontBlock === 'water' && isFaceVisible([x, y, z + 1], face, boardState)) ||
+                  (backBlock === 'water' && isFaceVisible([x, y, z - 1], face, boardState))) {
+                isSingleBlockFace = false
+              }
+            }
+            
+            // Check vertical neighbors (above and below)
+            const aboveKey = `${x},${y + 1},${z}`
+            const belowKey = `${x},${y - 1},${z}`
+            const aboveBlock = boardState.get(aboveKey)
+            const belowBlock = boardState.get(belowKey)
+            
+            // If adjacent block exists and has the same material and visible face, face would be merged vertically
+            if ((aboveBlock === 'water' && isFaceVisible([x, y + 1, z], face, boardState)) ||
+                (belowBlock === 'water' && isFaceVisible([x, y - 1, z], face, boardState))) {
+              isSingleBlockFace = false
+            }
+            
+            // Only place Waterfall on single-block faces
+            if (isSingleBlockFace) {
+              const waterPlacement = {
+                position: blockPos,
+                face,
+                decorationName: 'Waterfall',
+                rotation: getFaceRotation(face),
+                delay,
+                isAnimated: true,
+                phaseIndex: Math.round(z),
+              }
+              placements.push(waterPlacement)
+
+
+            // Place bubbles on visible side faces (all 8 bubbles)
+            for (let i = 1; i <= 8; i++) {
+              const bubblePlacement = {
+                position: blockPos,
+                face,
+                decorationName: `Bubble_${i}`,
+                rotation: getFaceRotation(face),
+                delay,
+                isAnimated: true,
+                phaseIndex: Math.round(z),
+              }
+              placements.push(bubblePlacement)
+            }
+            }
+            
           }
         }
       } else {
@@ -926,19 +990,24 @@ export function getDecorationPlacements(
             const selectedDecorationName = selectRandomDecoration(matchingRules, blockPos, face)
             
             if (selectedDecorationName) {
-              placements.push({
+              const placement = {
                 position: blockPos,
                 face,
                 decorationName: selectedDecorationName,
                 rotation: getFaceRotation(face),
                 delay,
-              })
+              }
+              placements.push(placement)
             }
           }
         }
       }
     }
   }
+  
+  // Count water decorations
+  const waterDecorations = placements.filter(p => p.decorationName.startsWith('Water_') || p.decorationName.startsWith('Bubble_'))
+  console.log(`[Decoration] Generated ${placements.length} total decorations (${waterDecorations.length} water-related)`)
   
   return placements
 }

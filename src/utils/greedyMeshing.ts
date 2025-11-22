@@ -1,4 +1,5 @@
-import { isFaceVisible, type FaceDirection } from './faceCulling'
+import { type FaceDirection } from './faceCulling'
+import { getVisibleFacesByLayer } from './visibleFaces'
 
 type Position = [number, number, number]
 
@@ -27,58 +28,6 @@ export function getFaceNormal(direction: FaceDirection): [number, number, number
     case 'left':
       return [-1, 0, 0]
   }
-}
-
-// Get visible faces for all blocks and group by direction, layer, and material
-// Accepts either Set<string> or Map<string, MaterialType> for occupied blocks
-function getVisibleFacesByLayer(
-  occupiedBlocks: Set<string> | Map<string, any>,
-  direction: FaceDirection
-): Map<string, Position[]> {
-  const layerMap = new Map<string, Position[]>()
-  
-  // Extract keys from Set or Map (both have .keys() method)
-  const keys = Array.from(occupiedBlocks.keys())
-  
-  for (const key of keys) {
-    const [x, y, z] = key.split(',').map(Number)
-    const position: Position = [x, y, z]
-    
-    // Only process if this face is visible
-    if (!isFaceVisible(position, direction, occupiedBlocks)) {
-      continue
-    }
-    
-    // Get material if available (for material-aware meshing)
-    let material: string = ''
-    if (occupiedBlocks instanceof Map) {
-      material = occupiedBlocks.get(key) || ''
-    }
-    
-    // Determine layer key based on face direction and material
-    let layerKey: string
-    switch (direction) {
-      case 'top':
-      case 'bottom':
-        layerKey = `${y}_${material}` // Group by Y level and material
-        break
-      case 'front':
-      case 'back':
-        layerKey = `${z}_${material}` // Group by Z level and material
-        break
-      case 'right':
-      case 'left':
-        layerKey = `${x}_${material}` // Group by X level and material
-        break
-    }
-    
-    if (!layerMap.has(layerKey)) {
-      layerMap.set(layerKey, [])
-    }
-    layerMap.get(layerKey)!.push(position)
-  }
-  
-  return layerMap
 }
 
 // Greedy meshing for a 2D grid of faces

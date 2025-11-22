@@ -125,7 +125,7 @@ export const TREE_SPAWN_DENSITY = 0.2
  */
 export function generateTreePlacements(
   grassBlocks: BlockPosition[],
-  availableTreeIds: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  availableTreeIds: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
   spawnDensity: number = TREE_SPAWN_DENSITY
 ): TreePlacement[] {
   const placements: TreePlacement[] = []

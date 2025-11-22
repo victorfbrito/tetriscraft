@@ -53,18 +53,6 @@ export default function App() {
     getTetrominoBlockPositions
   )
 
-  const treeOccupiedBlocks = useMemo(() => {
-    const occupied = new Set<string>()
-    treePlacements.forEach(({ position }) => {
-      const [treeX, treeY, treeZ] = position
-      const blockX = Math.round(treeX)
-      const blockY = Math.round(treeY - 0.5)
-      const blockZ = Math.round(treeZ)
-      occupied.add(`${blockX},${blockY},${blockZ}`)
-    })
-    return occupied
-  }, [treePlacements])
-
   // Track previous droppingTetromino to detect when drop completes
   const prevDroppingTetrominoRef = useRef(droppingTetromino)
   
@@ -102,6 +90,17 @@ export default function App() {
         activeTetromino.rotation
       )
     : 0
+
+  const waterBlocks = useMemo(() => {
+    const positions: Array<[number, number, number]> = []
+    boardState.forEach((material, key) => {
+      if (material === 'water') {
+        const [x, y, z] = key.split(',').map(Number) as [number, number, number]
+        positions.push([x, y, z])
+      }
+    })
+    return positions
+  }, [boardState])
 
   // Handle drop with validation and shake
   const handleDropTetromino = () => {
@@ -180,7 +179,7 @@ export default function App() {
               wireframe={showWireframe} 
             />
             <Suspense fallback={null}>
-              <Decorations boardState={boardState} treeOccupiedBlocks={treeOccupiedBlocks} />
+              <Decorations boardState={boardState} />
             </Suspense>
           {activeTetromino && (
             <>

@@ -10,6 +10,7 @@ function getMaterialFromType(type: TetrominoType): MaterialType {
   if (type.startsWith('GRASS_')) return 'grass'
   if (type.startsWith('BRICK_')) return 'brick'
   if (type.startsWith('WOOD_')) return 'wood'
+  if (type.startsWith('WATER_')) return 'water'
   // Fallback (should never happen)
   return 'grass'
 }
@@ -31,6 +32,9 @@ function getRandomTetromino(): TetrominoType {
     'WOOD_VERTICAL',
     'WOOD_ARROW',
     'WOOD_DOUBLE',
+    'WATER_1X3',
+    'WATER_1X2',
+    'WATER_L',
   ]
   return types[Math.floor(Math.random() * types.length)]
 }
@@ -38,15 +42,16 @@ function getRandomTetromino(): TetrominoType {
 export function useGameState() {
   // Queue of tetrominoes with materials (first one is next to use)
   // Material is derived from tetromino type name
-  const [queue, setQueue] = useState<Array<{ type: TetrominoType; material: MaterialType }>>(() => 
-    Array.from({ length: 5 }, () => {
-      const type = getRandomTetromino()
-      return {
-        type,
-        material: getMaterialFromType(type),
-      }
-    })
-  )
+  const [queue, setQueue] = useState<Array<{ type: TetrominoType; material: MaterialType }>>(() => {
+    const presetTypes: TetrominoType[] = ['WATER_1X3', 'WATER_1X2', 'WATER_L']
+    const randomCount = Math.max(0, 5 - presetTypes.length)
+    const randomTypes = Array.from({ length: randomCount }, () => getRandomTetromino())
+    const queueTypes = [...presetTypes, ...randomTypes]
+    return queueTypes.map((type) => ({
+      type,
+      material: getMaterialFromType(type),
+    }))
+  })
 
   // Active tetromino (null when none selected)
   const [activeTetromino, setActiveTetromino] = useState<{
@@ -82,7 +87,7 @@ export function useGameState() {
   }, [])
 
   // Board size constant (should match Board component default size)
-  const BOARD_SIZE = 4
+  const BOARD_SIZE = 3
   // Calculate board bounds for integer grid (center at [1, 1, 1])
   // For size 16: minCoord = 1 - floor(16/2) = -7, maxCoord = 1 + floor(15/2) = 8
   const BOARD_MIN = 1 - Math.floor(BOARD_SIZE / 2) // -7 for size 16
@@ -261,6 +266,14 @@ export function useGameState() {
         return null
       }
       return 'Grass must sit on grass or ground level'
+    }
+
+    // Rule Water: Water blocks must sit on ground level
+    if (material === 'water') {
+      if (y === 0) {
+        return null
+      }
+      return 'Water must sit on ground level'
     }
 
     // Rule 1: Wood blocks can be above any block
@@ -512,15 +525,6 @@ export function useGameState() {
     material: MaterialType
   ): boolean => {
     const result = evaluatePlacement(type, position, rotation, material)
-    if (!result.valid) {
-      console.log('[Tetromino Validation] Invalid landing attempt', {
-        type,
-        material,
-        position,
-        rotation,
-        reason: result.reason,
-      })
-    }
     return result.valid
   }, [evaluatePlacement])
 

@@ -59,3 +59,30 @@ export function getVisibleFaces(
   return faces
 }
 
+// Calculate decoration position on a block face
+// Returns the world position where a decoration should be placed, flush with the block surface
+export function getDecorationPosition(
+  blockPosition: Position,
+  face: FaceDirection
+): [number, number, number] {
+  const [x, y, z] = blockPosition
+  const offset = 0.5 // Half block size
+  
+  switch (face) {
+    case 'left':
+      return [x - offset, y, z]
+    case 'right':
+      return [x + offset, y, z]
+    case 'front':
+      return [x, y, z + offset]
+    case 'back':
+      return [x, y, z - offset]
+    case 'top':
+      return [x, y + offset, z]
+    case 'bottom':
+      return [x, y - offset, z]
+    default:
+      return [x, y, z]
+  }
+}
+

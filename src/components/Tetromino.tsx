@@ -4,7 +4,7 @@ import Block from './Block'
 import { type MaterialType } from '../utils/materials'
 
 // New tetromino types based on material-specific shapes
-// Each material type (grass, brick, wood) has different shape variants
+// Each material type (grass, brick, wood, water) has different shape variants
 export type TetrominoType = 
   | 'GRASS_SQUARE'    // Grass: 2x2 square (4 blocks)
   | 'GRASS_L'         // Grass: L-shape (5 blocks: 2x2 + one below left)
@@ -20,6 +20,9 @@ export type TetrominoType =
   | 'WOOD_VERTICAL'   // Wood: Vertical 1x2 rectangle (2 blocks)
   | 'WOOD_ARROW'      // Wood: Arrow-shaped (3 blocks)
   | 'WOOD_DOUBLE'     // Wood: Double with gap (3 blocks)
+  | 'WATER_1X3'       // Water: 1x3 straight line (3 blocks)
+  | 'WATER_1X2'       // Water: 1x2 straight line (2 blocks)
+  | 'WATER_L'         // Water: L-shape (3 blocks)
 
 interface TetrominoProps {
   type: TetrominoType
@@ -131,6 +134,23 @@ const TETROMINO_SHAPES: Record<TetrominoType, [number, number, number][]> = {
   WOOD_DOUBLE: [
     [0, 0, 0],  // Left block
     [2, 0, 0],  // Right block (gap at [1,0,0])
+  ],
+  // Water: 1x3 straight line
+  WATER_1X3: [
+    [0, 0, 0],
+    [1, 0, 0],
+    [2, 0, 0],
+  ],
+  // Water: 1x2 straight line
+  WATER_1X2: [
+    [0, 0, 0],
+    [1, 0, 0],
+  ],
+  // Water: L-shape (3 blocks)
+  WATER_L: [
+    [0, 0, 0],
+    [1, 0, 0],
+    [0, 0, 1],
   ],
 }
 

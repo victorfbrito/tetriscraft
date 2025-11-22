@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef, useState } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -6,17 +6,25 @@ import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLigh
 import { type MaterialType } from '../utils/materials'
 import { getDecorationPlacements, type DecorationPlacement } from '../utils/decorationRules'
 import DecorationInstance from './DecorationInstance'
+import AnimatedDecorationInstance from './AnimatedDecorationInstance'
 import { useDayNightCycleSnapshot } from '../context/DayNightCycleContext'
 
 interface DecorationsProps {
   boardState: Map<string, MaterialType>
-  treeOccupiedBlocks?: Set<string>
 }
 
-export default function Decorations({ boardState, treeOccupiedBlocks }: DecorationsProps) {
+export default function Decorations({ boardState }: DecorationsProps) {
   // Load block decorations GLB file (contains both brick and wood decorations)
   const blockDecorations = useGLTF('/block_decorations.glb') as any
   const decorationNodes = blockDecorations.nodes || {}
+  
+  // Extract animations for water decorations
+  const animations: THREE.AnimationClip[] = useMemo(() => {
+    if (!Array.isArray(blockDecorations.animations)) return []
+    return blockDecorations.animations.filter((clip: THREE.AnimationClip) => 
+      clip.name.match(/^(Water|Bubble)/)
+    )
+  }, [blockDecorations.animations])
   
   useEffect(() => {
     RectAreaLightUniformsLib.init()
@@ -25,41 +33,21 @@ export default function Decorations({ boardState, treeOccupiedBlocks }: Decorati
   // Access emission material for windows
   const windowEmissionMaterial = blockDecorations.materials?.WindowEmission as THREE.MeshStandardMaterial | undefined
   
-  // Create a stable key from brick and wood block positions for memoization
-  const blockPositionsKey = useMemo(() => {
-    const positions: string[] = []
-    for (const [key, material] of boardState.entries()) {
-      if (material === 'brick' || material === 'wood') {
-        positions.push(key)
-      }
-    }
-    return positions.sort().join('|')
-  }, [boardState])
-  
   // Calculate decoration placements based on rules
   const placements = useMemo(() => {
-    return getDecorationPlacements(boardState, treeOccupiedBlocks)
-  }, [boardState, blockPositionsKey, treeOccupiedBlocks])
+    return getDecorationPlacements(boardState)
+  }, [boardState])
 
   const getCycleState = useDayNightCycleSnapshot()
   const [windowsLit, setWindowsLit] = useState(false)
-  const windowsLitRef = useRef(false)
 
   useFrame(() => {
-    if (!windowEmissionMaterial) {
-      return
-    }
+    if (!windowEmissionMaterial) return
 
     const { shouldWindowsGlow } = getCycleState()
+    windowEmissionMaterial.emissiveIntensity = shouldWindowsGlow ? 0.6 : 0
 
-    if (shouldWindowsGlow) {
-      windowEmissionMaterial.emissiveIntensity = 0.6
-    } else {
-      windowEmissionMaterial.emissiveIntensity = 0
-    }
-
-    if (shouldWindowsGlow !== windowsLitRef.current) {
-      windowsLitRef.current = shouldWindowsGlow
+    if (shouldWindowsGlow !== windowsLit) {
       setWindowsLit(shouldWindowsGlow)
     }
   })
@@ -81,6 +69,10 @@ export default function Decorations({ boardState, treeOccupiedBlocks }: Decorati
   const isWindowDecoration = (decorationName: string) =>
     decorationName.toLowerCase().includes('window')
 
+  const isWaterDecoration = (decorationName: string) =>
+    decorationName.startsWith('Water_') || decorationName.startsWith('Bubble_')
+
+  // Face normals for window light positioning
   const FACE_NORMALS: Record<string, [number, number, number]> = {
     left: [-1, 0, 0],
     right: [1, 0, 0],
@@ -101,16 +93,37 @@ export default function Decorations({ boardState, treeOccupiedBlocks }: Decorati
           return null
         }
         
-        const renderInstances = decorationPlacements.map((placement, index) => (
-          <DecorationInstance
-            key={`${decorationName}-${placement.position.join(',')}-${placement.face}-${index}`}
-            node={decorationNode}
-            blockPosition={placement.position}
-            face={placement.face}
-            rotation={placement.rotation}
-            delay={placement.delay}
-          />
-        ))
+        const renderInstances = decorationPlacements.map((placement, index) => {
+          const key = `${decorationName}-${placement.position.join(',')}-${placement.face}-${index}`
+          
+          // Use AnimatedDecorationInstance for water decorations
+          if (isWaterDecoration(decorationName) && placement.isAnimated) {
+            return (
+              <AnimatedDecorationInstance
+                key={key}
+                node={decorationNode}
+                blockPosition={placement.position}
+                face={placement.face}
+                rotation={placement.rotation}
+                delay={placement.delay}
+                animations={animations}
+                phaseIndex={placement.phaseIndex}
+              />
+            )
+          }
+          
+          // Use regular DecorationInstance for other decorations
+          return (
+            <DecorationInstance
+              key={key}
+              node={decorationNode}
+              blockPosition={placement.position}
+              face={placement.face}
+              rotation={placement.rotation}
+              delay={placement.delay}
+            />
+          )
+        })
 
         if (!isWindowDecoration(decorationName)) {
           return (

@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect, useRef } from 'react'
+import { useSpring, a } from '@react-spring/three'
 import * as THREE from 'three'
 import { generateAllQuads } from '../utils/greedyMeshing'
 import { type MaterialType, getMaterialColor } from '../utils/materials'
@@ -12,6 +13,9 @@ export default function OptimizedBlocks({
   boardState, 
   wireframe = false 
 }: OptimizedBlocksProps) {
+  // Track previous water block count to detect new water blocks
+  const prevWaterBlockCountRef = useRef(0)
+  
   // Group quads by material and create separate geometries for each material
   const materialGeometries = useMemo(() => {
     const quads = generateAllQuads(boardState)
@@ -173,6 +177,124 @@ export default function OptimizedBlocks({
         )
       }
       
+      // Generate gap-filling quads for blocks adjacent to water
+      // Water blocks are scaled to 0.95 height and positioned at -0.05
+      // So the top of water blocks is at: -0.05 + 0.5*0.95 = 0.425 (relative to block center)
+      const WATER_TOP_Y = 0.425
+      const BLOCK_TOP_Y = 0.5
+      
+      // Helper function to check if a neighbor block is water
+      const isNeighborWater = (x: number, y: number, z: number, dir: 'front' | 'back' | 'left' | 'right'): boolean => {
+        let neighborKey: string
+        switch (dir) {
+          case 'front':
+            neighborKey = `${x},${y},${z + 1}`
+            break
+          case 'back':
+            neighborKey = `${x},${y},${z - 1}`
+            break
+          case 'right':
+            neighborKey = `${x + 1},${y},${z}`
+            break
+          case 'left':
+            neighborKey = `${x - 1},${y},${z}`
+            break
+        }
+        return boardState.get(neighborKey) === 'water'
+      }
+      
+      // Find all blocks of this material that are adjacent to water
+      const gapQuads: Array<{ direction: 'front' | 'back' | 'left' | 'right', blockX: number, blockY: number, blockZ: number }> = []
+      
+      for (const [key, mat] of boardState.entries()) {
+        if (mat !== material || mat === 'water') continue
+        
+        const [x, y, z] = key.split(',').map(Number)
+        
+        // Check each vertical direction
+        const directions: Array<'front' | 'back' | 'left' | 'right'> = ['front', 'back', 'left', 'right']
+        for (const dir of directions) {
+          if (isNeighborWater(x, y, z, dir)) {
+            gapQuads.push({ direction: dir, blockX: x, blockY: y, blockZ: z })
+          }
+        }
+      }
+      
+      // Generate gap quads - these fill the space from water top to block top
+      for (const gapQuad of gapQuads) {
+        const { direction, blockX, blockY, blockZ } = gapQuad
+        const waterTopY = blockY + WATER_TOP_Y
+        const blockTopY = blockY + BLOCK_TOP_Y
+        
+        let gapCorners: [number, number, number][]
+        
+        switch (direction) {
+          case 'front':
+            // Face is at z + 0.5, spans from water top to block top
+            gapCorners = [
+              [blockX - 0.5, waterTopY, blockZ + 0.5],
+              [blockX + 0.5, waterTopY, blockZ + 0.5],
+              [blockX + 0.5, blockTopY, blockZ + 0.5],
+              [blockX - 0.5, blockTopY, blockZ + 0.5],
+            ]
+            break
+          case 'back':
+            // Face is at z - 0.5
+            gapCorners = [
+              [blockX - 0.5, waterTopY, blockZ - 0.5],
+              [blockX - 0.5, blockTopY, blockZ - 0.5],
+              [blockX + 0.5, blockTopY, blockZ - 0.5],
+              [blockX + 0.5, waterTopY, blockZ - 0.5],
+            ]
+            break
+          case 'right':
+            // Face is at x + 0.5
+            gapCorners = [
+              [blockX + 0.5, waterTopY, blockZ - 0.5],
+              [blockX + 0.5, blockTopY, blockZ - 0.5],
+              [blockX + 0.5, blockTopY, blockZ + 0.5],
+              [blockX + 0.5, waterTopY, blockZ + 0.5],
+            ]
+            break
+          case 'left':
+            // Face is at x - 0.5
+            gapCorners = [
+              [blockX - 0.5, waterTopY, blockZ - 0.5],
+              [blockX - 0.5, waterTopY, blockZ + 0.5],
+              [blockX - 0.5, blockTopY, blockZ + 0.5],
+              [blockX - 0.5, blockTopY, blockZ - 0.5],
+            ]
+            break
+        }
+        
+        // Add vertices for the gap quad
+        const gapBaseIndex = vertexIndex
+        for (const corner of gapCorners) {
+          positions.push(corner[0], corner[1], corner[2])
+          vertexIndex++
+        }
+        
+        // Add indices for two triangles (same winding as regular front face)
+        const gapV0 = gapBaseIndex
+        const gapV1 = gapBaseIndex + 1
+        const gapV2 = gapBaseIndex + 2
+        const gapV3 = gapBaseIndex + 3
+        
+        // Use same winding as the corresponding direction
+        if (direction === 'front' || direction === 'right') {
+          indices.push(
+            gapV0, gapV1, gapV2,
+            gapV0, gapV2, gapV3
+          )
+        } else {
+          // back and left use reverse winding
+          indices.push(
+            gapV0, gapV3, gapV2,
+            gapV0, gapV2, gapV1
+          )
+        }
+      }
+      
       const geom = new THREE.BufferGeometry()
       geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
       geom.setIndex(indices)
@@ -187,16 +309,74 @@ export default function OptimizedBlocks({
     return geometries
   }, [boardState])
   
+  // Count water blocks for animation trigger
+  const waterBlockCount = useMemo(() => {
+    let count = 0
+    boardState.forEach((material) => {
+      if (material === 'water') count++
+    })
+    return count
+  }, [boardState])
+  
+  // Animate water blocks height from 1 to 0.8
+  // Scale from bottom: when scaleY goes from 1 to 0.8, we need to adjust position
+  // to keep the bottom at the same level
+  const [waterSpring, waterApi] = useSpring(() => ({
+    scaleY: 1,
+    positionY: 0, // Position adjustment to scale from bottom
+    config: { mass: 1, tension: 200, friction: 25 },
+  }), [])
+  
+  // Trigger animation when new water blocks are added
+  useEffect(() => {
+    if (waterBlockCount > prevWaterBlockCountRef.current) {
+      // New water blocks added - animate to 0.8
+      // When scaling from 1 to 0.8, move down by (1 - 0.8) / 2 = 0.1
+      // to keep bottom at ground level
+      waterApi.start({ 
+        scaleY: 0.95,
+        positionY: -0.05, // Move down to compensate for scaling from center
+      })
+    }
+    prevWaterBlockCountRef.current = waterBlockCount
+  }, [waterBlockCount, waterApi])
+  
+  // Separate water blocks from other materials
+  const waterGeometries = materialGeometries.filter(({ material }) => material === 'water')
+  const otherGeometries = materialGeometries.filter(({ material }) => material !== 'water')
+  
   return (
     <group>
-      {materialGeometries.map(({ material, geometry }, index) => (
-        <mesh key={index} geometry={geometry} receiveShadow castShadow>
+      {/* Render non-water blocks normally */}
+      {otherGeometries.map(({ material, geometry }, index) => (
+        <mesh key={`other-${index}`} geometry={geometry} receiveShadow castShadow>
           <meshStandardMaterial
             color={getMaterialColor(material)}
             wireframe={wireframe}
             side={THREE.DoubleSide}
           />
         </mesh>
+      ))}
+      
+      {/* Render water blocks with animated scale from bottom */}
+      {waterGeometries.map(({ material, geometry }, index) => (
+        <a.group
+          key={`water-${index}`}
+          position-y={waterSpring.positionY}
+        >
+          <a.mesh 
+            geometry={geometry} 
+            receiveShadow 
+            castShadow
+            scale-y={waterSpring.scaleY}
+          >
+            <meshStandardMaterial
+              color={getMaterialColor(material)}
+              wireframe={wireframe}
+              side={THREE.DoubleSide}
+            />
+          </a.mesh>
+        </a.group>
       ))}
     </group>
   )
